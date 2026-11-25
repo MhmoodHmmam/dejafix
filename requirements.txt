@@ -1,0 +1,7 @@
+# Direct dependencies, pinned. Python 3.14.
+Django==5.2.19
+anthropic==2.14.0
+mcp==2.3.0
+# Imported directly by dejafix/meko/gateway.py (also pulled in by mcp)
+anyio==4.16.0
+httpx2==2.16.2

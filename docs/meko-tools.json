@@ -1,0 +1,2669 @@
+[
+  {
+    "name": "amp_branch_create",
+    "description": "Fork a branch in a cluster — a zero-copy, copy-on-write clone of the data.\n\nUse when the user asks to **branch**, **fork**, or **clone** a database so\nsub-agents can work on isolated copies in parallel.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster to branch. Use ``amp_cluster_list``."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name for the new branch."
+        },
+        "parent_branch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Branch to fork from. Omit to fork the cluster's default\nbranch (\"main\")."
+        },
+        "fork_point_lsn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ancestor LSN to fork at (\"X/X\" hex). Omit for the\nparent's latest; required when the parent has no running compute the\ncontroller can read the flush LSN from."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_branch_delete",
+    "description": "Delete a branch, cascading to its compute.\n\nUse when the user asks to **delete**, **drop**, or **remove** a branch. A\nbranch that still has child branches is rejected. Blocks until complete.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch to delete. Use ``amp_branch_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_branch_get",
+    "description": "Get a single branch by id.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch. Use ``amp_branch_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_branch_list",
+    "description": "List the branches in a cluster (the default branch plus its forks).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_cluster_create",
+    "description": "Create a cluster (a Postgres database) in a datapack.\n\nUse when the user asks to **create**, **provision**, or **spin up** a\ndatabase/cluster. The datapack's AMP shared pool is created automatically on\nthe first cluster; a default branch named \"main\" is created with the cluster.\n\nTwo shapes:\n\n- Default (``with_writer=False``): the cluster only — no compute. Add an\n  endpoint afterwards with ``amp_compute_create``.\n- ``with_writer=True``: one task also provisions a ``read_write`` endpoint\n  on the ``main`` branch, sized by ``cpu``/``memory`` — a ready-to-connect\n  database (what the UI wizard creates). When omitted, cpu/memory default\n  to 0.5 vCPU / 4Gi (sized to fit the free tier); tell the user the\n  default was applied and offer a different size. This shape reserves\n  compute, so the account's tier vCPU cap applies (defaults: free 0.5 /\n  standard 2 / pro 5 vCPU across all datapacks, deployment-tunable;\n  enterprise uncapped) — exceeding it returns a 402 with a\n  ``*_TIER_CORE_LIMIT`` code. Check remaining budget first with\n  ``amp_core_budget``; on a limit error tell the user their tier's cap\n  (or size down) instead of retrying.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Cluster (database) name."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. If omitted, the caller's active\ndatapack is used. Use ``datapack_search(query=...)`` to look one up."
+        },
+        "pg_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional Postgres major version. Omit to take AMP's default;\nonly the default version is currently accepted."
+        },
+        "with_writer": {
+          "default": false,
+          "type": "boolean",
+          "description": "Also provision the ``main``-branch ``read_write`` endpoint\nin the same task. Default False (cluster only)."
+        },
+        "cpu": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Endpoint CPU reservation, a Kubernetes quantity (e.g. \"2\",\n\"500m\"). Only used with ``with_writer=True``; omit for the\n0.5-vCPU default."
+        },
+        "memory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Endpoint memory reservation (e.g. \"8Gi\"). Only used with\n``with_writer=True``. Omit to derive it from ``cpu`` at AMP's\nrequired 8 GiB per vCPU (4Gi at the 0.5-vCPU default)."
+        },
+        "password": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "cloud_admin password for the writer (``with_writer=True``\nonly). Omit and a strong one is generated and returned once as\n``cloud_admin_password`` — the control plane keeps only the SCRAM\nverifier, so it cannot be recovered later. Printable ASCII, 8-128."
+        },
+        "connectivity_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "exposure of the ``with_writer`` endpoint.\n``ingress_external`` gives it a public address on the shared ingress load\nbalancer so a client OUTSIDE the cluster can connect; omit for the\nin-cluster default. Only used with ``with_writer=True``, and it is a\ncreate-time choice — it cannot be changed afterwards, so decide it now.\nRequires ``allowed_cidrs``."
+        },
+        "allowed_cidrs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "source IP allow-list for ``ingress_external`` (CIDRs, each with\nan explicit prefix, e.g. ``[\"203.0.113.4/32\"]``). REQUIRED when\n``connectivity_mode`` is ``ingress_external``. **Ask the user for the IP(s)\nto allow** — a public endpoint with no allow-list is refused, and so is any\nentry broader than /24 (IPv4) or /48 (IPv6), an unspecified/default\nnetwork, or an IPv4-mapped IPv6 range."
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional cluster engine (\"postgres\" default, \"aidb\", \"oracle\")."
+        },
+        "extensions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional catalog extensions to seed on the default branch."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_cluster_delete",
+    "description": "Delete a cluster (database), cascading to its branches and compute.\n\nUse when the user asks to **delete**, **drop**, or **remove** a\ndatabase/cluster. Irreversible. Blocks until the operation completes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster to delete. Use ``amp_cluster_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_cluster_get",
+    "description": "Get a single cluster (database) by id.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_cluster_list",
+    "description": "List the clusters (databases) in a datapack.\n\nUse when the user asks to **list**, **show**, or **view** databases/clusters.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_compute_create",
+    "description": "Provision a compute instance (an endpoint) on a branch.\n\nUse when the user asks to **create**, **provision**, or **attach** compute /\nan endpoint so a branch is reachable. A branch admits at most one\n``read_write`` compute instance.\n\nAdding an endpoint reserves compute, so the account's tier vCPU cap\napplies (defaults: free 0.5 / standard 2 / pro 5 vCPU across all\ndatapacks, deployment-tunable; enterprise uncapped) — exceeding it\nreturns a 402 with a ``*_TIER_CORE_LIMIT`` code. Check remaining budget\nfirst with ``amp_core_budget``; on a limit error tell the user their\ntier's cap (or size down) instead of retrying.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch. Use ``amp_branch_list`` to find it."
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``read_write`` (default) or ``read_only``."
+        },
+        "cpu": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU reservation, a Kubernetes quantity (e.g. \"2\", \"1500m\"). Omit\nfor the 0.5-vCPU default (sized to fit the free tier); tell the\nuser the default was applied and offer a different size."
+        },
+        "memory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Memory reservation (e.g. \"8Gi\"). Omit to derive it from\n``cpu`` at AMP's required 8 GiB per vCPU (4Gi at the 0.5-vCPU\ndefault); a memory-only call derives ``cpu`` from it the same way."
+        },
+        "password": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "cloud_admin password for a ``read_write`` endpoint. Omit it and\na strong one is generated and returned once as ``cloud_admin_password``\n— the control plane keeps only the verifier, so it cannot be recovered\nlater. A ``read_only`` endpoint takes no password. MEKO-1017 handling:\na FORK's writer (``password_required: false``) reuses the parent\nbranch's password — no password is set or returned, any you pass is\ndropped, and a ``password_notice`` is returned instead. CAVEAT:\n``password_required`` is root-only, so a SECOND writer on a ROOT branch\n(a deleted-and-recreated writer) still reports true and still gets a\ngenerated password — but the controller keeps the root's ORIGINAL one,\nso that generated password won't log in. The tool can't detect this; if\nthe database already existed, tell the user to use its original\ncloud_admin password. An older api_server that doesn't report\n``password_required`` (or a failed branch lookup) also generates, so\nthe first writer of a root is never regressed."
+        },
+        "connectivity_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``ingress_external`` to give the endpoint a public\naddress on the shared ingress load balancer so a client outside\nthe cluster can connect. Omit for the in-cluster default. Requires\n``allowed_cidrs``."
+        },
+        "allowed_cidrs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "source IP allow-list for ``ingress_external`` (CIDRs, each\nwith an explicit prefix, e.g. ``[\"203.0.113.4/32\"]``). REQUIRED when\n``connectivity_mode`` is ``ingress_external`` — a public endpoint with no\nallow-list is open to the whole internet behind only the password, so\nMeko rejects it, along with any entry broader than /24 (IPv4) or /48\n(IPv6), an unspecified/default network, or an IPv4-mapped IPv6 range.\nAsk the user for the IPs to allow."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_compute_delete",
+    "description": "Retire a compute instance (endpoint) on a branch.\n\nUse when the user asks to **delete**, **stop**, or **remove** compute / an\nendpoint. Blocks until the operation completes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch. Use ``amp_branch_list`` to find it."
+        },
+        "compute_id": {
+          "type": "string",
+          "description": "UUID of the compute instance to delete. Use ``amp_compute_list``."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id",
+        "compute_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_compute_get",
+    "description": "Get a single compute instance (endpoint) by id — including its address.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch. Use ``amp_branch_list`` to find it."
+        },
+        "compute_id": {
+          "type": "string",
+          "description": "UUID of the compute instance. Use ``amp_compute_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id",
+        "compute_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_compute_list",
+    "description": "List the compute instances (endpoints) on a branch.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch. Use ``amp_branch_list`` to find it."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_compute_resize",
+    "description": "Resize a compute instance (endpoint) — change its CPU and/or memory.\n\nUse when the user asks to **resize**, **scale**, or change the\n**CPU/memory** of an endpoint. At least one of ``cpu`` / ``memory`` is\nrequired; an omitted field keeps its current value (no defaults are\nfilled in — unlike the create tools). Blocks until the AMP task\ncompletes. AMP requires 8 GiB of memory per vCPU, so growing cpu\nusually means growing memory in the same call.\n\nGrowing CPU counts against the account's tier vCPU cap (defaults: free\n0.5 / standard 2 / pro 5 vCPU across all datapacks, deployment-tunable;\nenterprise uncapped) — exceeding it returns a 402 with a\n``*_TIER_CORE_LIMIT`` code. Check\nremaining budget first with ``amp_core_budget``; on a limit error tell\nthe user their tier's cap (or size down) instead of retrying.\nMemory-only resizes never hit the cap.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "description": "UUID of the cluster. Use ``amp_cluster_list`` to find it."
+        },
+        "branch_id": {
+          "type": "string",
+          "description": "UUID of the branch. Use ``amp_branch_list`` to find it."
+        },
+        "compute_id": {
+          "type": "string",
+          "description": "UUID of the compute instance. Use ``amp_compute_list``."
+        },
+        "cpu": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New CPU reservation, a Kubernetes quantity (e.g. \"2\", \"500m\")."
+        },
+        "memory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New memory reservation (e.g. \"8Gi\")."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "cluster_id",
+        "branch_id",
+        "compute_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "amp_core_budget",
+    "description": "Get the account's AMP vCPU budget: cores used across ALL datapacks vs the\ntier cap.\n\nUse BEFORE proposing a sized operation (``amp_cluster_create`` with\n``with_writer=True``, ``amp_compute_create``, ``amp_compute_resize``) or\nwhen the user asks how much compute they have left. Read-only.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack (routes the request; the budget\nitself is account-wide). Defaults to the active datapack."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "artifact_get",
+    "description": "Retrieve a previously uploaded artifact by its content hash.\n\nUse this when the agent needs to read back a file it (or another agent)\npreviously stored via artifact_put.\n\nSmall files (< 1 MB): content is returned inline as content_base64.\nLarge files (>= 1 MB): the file is written to ~/.meko/artifacts/<hash>/<filename>\non the local machine and local_path is returned. The agent should read the\nfile from that path using normal file-reading tools.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "type": "string",
+          "description": "SHA-256 hex returned by artifact_put."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Langfuse conversation id for trace nesting."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Datapack UUID. Defaults to the caller's default datapack."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier for trace attribution."
+        }
+      },
+      "required": [
+        "content_hash",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "artifact_put",
+    "description": "Upload a file artifact to this datapack.\n\nUse this when an agent has generated a file (report, CSV, PDF, code output,\netc.) and wants to persist it in Meko for later retrieval or cross-agent\nsharing. To make a file's content searchable by meaning instead, use\nknowledgebase_upload_document.\n\nFiles smaller than 1 MB are stored inline in the database.\nFiles 1 MB or larger are stored in the datapack's S3 bucket.\nUploading the same bytes twice is idempotent — returns the existing artifact.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "Original filename including extension (e.g. \"report.pdf\")."
+        },
+        "content_base64": {
+          "type": "string",
+          "description": "Base64-encoded file bytes."
+        },
+        "content_type": {
+          "type": "string",
+          "description": "MIME type (e.g. \"application/pdf\", \"text/csv\")."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Langfuse conversation id for trace nesting."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target datapack UUID. Defaults to the caller's default datapack."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier for trace attribution."
+        }
+      },
+      "required": [
+        "filename",
+        "content_base64",
+        "content_type",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "context_search",
+    "description": "One retrieval call across the conversation cache, memory, and the\nknowledgebase — queries every source ``force_source`` allows **in\nparallel** and returns each one's results in its own labeled bucket.\nNothing here suppresses another source: a conversation-cache hit no\nlonger hides a KB document that supersedes it, and a \"good enough\"\nmemory no longer skips the KB either. Any source can legitimately come\nback empty — that means nothing relevant, not a broken call.\n\nEach source's own floor:\n  - Conversation: CONVERSATION_HIT_DISTANCE gates the cache lookup\n    itself (unchanged).\n  - Memory: no absolute floor on the ``auto`` path. The public\n    ``memory_search`` tool applies the runtime ``memory_search_min_score``\n    floor because it answers from memory alone; on the ``auto`` path\n    this call keeps the full mem0 list because the KB and conversation\n    buckets sit beside it and let the caller discount a weak row. That\n    preserves hits whose BM25 or entity signal is strong and whose\n    cosine is weak, which a dense floor would veto. The cost is that\n    this bucket can be non-empty for a query with nothing relevant in\n    memory, and nothing absorbs that when the other two sources come\n    back empty. When ``force_source=\"memory\"`` skips the other two\n    sources entirely, this path reapplies the same runtime floor,\n    because memory is then the sole bucket and there is nothing to\n    discount against.\n  - Knowledge base: CONTEXT_SEARCH_KB_MAX_DISTANCE, new here.\n    knowledgebase_search's own trim is relative-to-the-top-match only\n    and always keeps at least one result by design, so this adds the\n    absolute cutoff that lets a genuinely irrelevant query return zero\n    KB chunks instead of one weak one.\n\nSet ``force_source`` to query only one source instead of all three —\n``\"conversation\"``, ``\"memory\"``, or ``\"knowledge_base\"`` skip the other\ntwo entirely (not just filter them from the response), for a caller\nthat already knows which source it wants. ``memory_search`` /\n``knowledgebase_search`` remain available directly too, for UUID\nlookups this tool doesn't surface.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Natural language description of what to find."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Conversation id from stored chat; nests the trace."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier scoping memory/conversation lookups."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack to search within."
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer",
+          "description": "Maximum number of results to return per source (default 10)."
+        },
+        "force_source": {
+          "default": "auto",
+          "type": "string",
+          "description": "``\"auto\"`` (default, all three) or ``\"conversation\"``\n/ ``\"memory\"`` / ``\"knowledge_base\"`` — see above."
+        },
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional. What the user asked, when ``query`` is a rewrite of\nit. Recorded in the datapack's search log; it does not change\nthe search."
+        },
+        "verify": {
+          "default": false,
+          "type": "boolean",
+          "description": "Optional, default false. A replay of a saved search: it is\nrecorded in the event log marked verify, and is not counted in the\nowner's search log, daily counts or token-savings statistics, but it\ncounts against the user's search limit like any other search. It\nreturns the normal result. Only the Meko api_server's replay is\nhonoured; from any other caller the argument is ignored and the\nsearch is logged and counted like a normal one. Leave it off for a\nreal question."
+        },
+        "conversation_hit_distance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional, default unset. A cosine-distance\ncutoff from 0 to 2 that replaces ``CONVERSATION_HIT_DISTANCE`` for\nthe conversation source of this call only. Unset keeps the server's\nconfigured gate. Raising it lets weaker turns count as hits, so more\nquestions get conversation context (2.0 admits every candidate) and\nmore verbatim turns are sent. The reported token_savings use a flat\nper-hit estimate, so they do not reflect those extra tokens. Ignored when\n``force_source`` leaves the conversation source out."
+        }
+      },
+      "required": [
+        "query",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "conversation_add_message",
+    "description": "Add a message (user prompt + assistant response) to a conversation.\n\nCall after ``conversation_create`` to append each message. A message\nrepresents one interaction: the user's input and the assistant's\noutput, stored as a span inside the conversation's trace. The turn\nis queued for background writing and the tool returns immediately\nwith the assigned message ID.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID returned by ``conversation_create``."
+        },
+        "input": {
+          "type": "string",
+          "description": "The user's prompt or question."
+        },
+        "output": {
+          "type": "string",
+          "description": "The assistant's response."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. Must match the ``agent_id`` used in\n``conversation_create``."
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional short paragraph (1–3 sentences) explaining\nthe *why* behind the reply. Plain text; inline markdown\nallowed."
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON string of arbitrary metadata to attach."
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional seed string for deterministic message ID. When\nboth a hook and the MCP server use the same seed, they\nproduce the same message ID, enabling deduplication."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack whose Langfuse project stores\nthe message. Required whenever no server-side default\nresolves for the caller. Use ``datapack_search(query=...)`` to look up\nthe id. Calls without ``datapack_id`` and without a resolved\ndefault return ``{\"error\": \"datapack_id_required\"}`` and\npersist nothing."
+        },
+        "plan": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Optional list of 2–4 imperative, single-sentence actions\ntaken for this turn. Pass a list of strings; do not\npre-number entries."
+        }
+      },
+      "required": [
+        "conversation_id",
+        "input",
+        "output"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "conversation_create",
+    "description": "Create a new conversation to store a chat / dialog exchange.\n\nInvoke when the user asks to **store**, **save**, or **log a\nconversation**, **chat history**, or **query and response**. Creates\na conversation container; use ``conversation_add_message`` to append\neach user-prompt / assistant-response pair.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. Conversations are scoped per agent.\nUse a consistent ID across calls for the same agent. Coding\nagents use ``<client>:<repo-basename>`` (e.g.\n``claude_code:myrepo``); other clients use a stable client\nname (e.g. ``claude_desktop``)."
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional run identifier."
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional human-readable title for the conversation."
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON string of arbitrary metadata to attach."
+        },
+        "session_id": {
+          "default": "",
+          "type": "string",
+          "description": "Optional session ID used as the conversation-container\ndedup key. When supplied it is HONORED so callers that derive a\nstable id (e.g. a Codex rollout basename) reconnect the same\nconversation instead of creating a duplicate. If omitted, a new\nUUID is generated. Non-hex ids are normalized deterministically\ninto a valid 32-hex Langfuse trace id (same seed -> same id), so\nthe returned conversation ``id`` may differ from the raw input\nwhile still deduplicating consistently across callers."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack whose Langfuse project stores\nthe conversation. Required whenever no server-side default\nresolves for the caller. Use ``datapack_search(query=...)`` to look up\nthe id. Calls without ``datapack_id`` and without a resolved\ndefault return ``{\"error\": \"datapack_id_required\"}`` and\npersist nothing."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "conversation_delete",
+    "description": "Permanently delete a conversation and all its messages.\n\nThis is a hard delete — the conversation and all associated traces\nare removed from Langfuse. This cannot be undone. Only deletes if\nthe conversation belongs to the specified agent.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID of the conversation to delete."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. Only deletes if the conversation\nbelongs to this agent."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack whose Langfuse project holds\nthe conversation. Required whenever no server-side default\nresolves for the caller. Use ``datapack_search(query=...)`` to look up\nthe id. Calls without ``datapack_id`` and without a resolved\ndefault return ``{\"error\": \"datapack_id_required\"}``."
+        }
+      },
+      "required": [
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "conversation_get",
+    "description": "Retrieve a stored conversation by ID, optionally including its turns.\n\nUse this when the user asks to **recall**, **retrieve**, or **review** a\npreviously stored conversation or chat history. By default returns only\nmetadata and message count. Set ``include_messages=True`` to fetch the\nfull message history with input, output, and reasoning.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID of the conversation to fetch."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. Only returns the conversation if it\nbelongs to this agent."
+        },
+        "include_messages": {
+          "default": false,
+          "type": "boolean",
+          "description": "Set True to include the full message history\n(input, output, reasoning). Default False returns metadata only."
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer",
+          "description": "Max number of messages to return (default 100)."
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer",
+          "description": "Number of messages to skip (default 0)."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack whose Langfuse project holds\nthe conversation. Required whenever no server-side default\nresolves for the caller. Use ``datapack_search(query=...)`` to look up\nthe id. Calls without ``datapack_id`` and without a resolved\ndefault return ``{\"error\": \"datapack_id_required\"}``."
+        }
+      },
+      "required": [
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "conversation_list",
+    "description": "List stored conversations for a datapack, ordered by most recently updated.\n\nUse this when the user asks to **list**, **show**, or **browse** the\nstored conversations or chat history for a datapack.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier (used for trace attribution only)."
+        },
+        "limit": {
+          "default": 20,
+          "type": "integer",
+          "description": "Max number of conversations to return (default 20)."
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer",
+          "description": "Number of conversations to skip for pagination (default 0)."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Optional. Pass the active conversation_id to nest\nthe list-call's trace under it, or omit — listing does not\ndepend on a specific conversation. When omitted, the call gets\nits own ephemeral trace session so it still appears in Langfuse\nbut is not falsely attributed to an unrelated conversation."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack whose conversations to list. If\nomitted, the caller's default datapack is used. Use\n``datapack_search(query=...)`` to look up the id."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "conversation_update",
+    "description": "Update a conversation's title and/or metadata.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID of the conversation to update."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. Only updates if the conversation\nbelongs to this agent."
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New title (pass to change, omit to keep)."
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New metadata as a JSON string (pass to replace, omit to keep)."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the datapack whose Langfuse project holds\nthe conversation. Required whenever no server-side default\nresolves for the caller. Use ``datapack_search(query=...)`` to look up\nthe id. Calls without ``datapack_id`` and without a resolved\ndefault return ``{\"error\": \"datapack_id_required\"}``."
+        }
+      },
+      "required": [
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "datapack_create",
+    "description": "Create a new Meko datapack — an isolated database environment with its\nown agent namespace.\n\nUse this when the user asks to **create**, **provision**, or **set up**\na new datapack or workspace.\n\nThis is a Meko platform operation. Direct SQL access against the\nunderlying database is not part of the published MCP surface; use the\nMeko control plane (UI or REST) for schema and data work that needs\nraw queries.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name for the new datapack.  Must be unique across the platform."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional UUID of a datapack for Langfuse project routing."
+        },
+        "folder_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional UUID of a project folder to file the new datapack\ninto. Only deployments with the Projects feature have folders; on\nany other deployment passing one is refused, so omit it unless\nthe project tools are in your tool list. Where it does apply, it\nsaves a second call to ``project_add_datapack``, ``project_describe``\nfinds the id, and the folder is checked before the datapack is\ncreated so a wrong id creates nothing. Omit it and the datapack is\ncreated Unfiled, which works exactly as it always has."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "datapack_delete",
+    "description": "Permanently delete a Meko datapack, dropping its database and all roles.\n\nUse this when the user asks to **delete**, **destroy**, or **remove**\na datapack.  This is irreversible — the database and all data are dropped.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "type": "string",
+          "description": "UUID of the datapack to delete. Required — there is no\ndefault to avoid deleting the wrong datapack. Use ``datapack_search(query=...)``\nto look up the id."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "datapack_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "datapack_describe",
+    "description": "Describe a Meko datapack by id, optionally including status info.\n\nUse this when the user asks to **describe**, **get details**, or **inspect**\na specific datapack.  Set ``include_status=True`` to also retrieve agent\ncount, knowledge base count, and provisioning status.\n\nThe returned JSON exposes count fields aligned with the Meko UI's\nDatapack Constructs diagram:\n\n- ``memory_count``: total memories stored for the datapack (mem0).\n- ``collective_memory_count``: memories promoted into shared knowledge\n  (UI label: \"Collective Memories\").\n- ``learnings_count``: memories awaiting a promotion decision.\n- ``knowledge_base_file_count``: KB documents indexed or being indexed\n  (UI label: \"Knowledge Base\"). ``null`` if the datapack status endpoint\n  is unreachable, the api-server is too old to report it, or the\n  api-server couldn't count the documents.\n- ``knowledge_chunk_count``: RAG chunks across all KB documents. Not a\n  user-facing metric — surfaced for debugging RAG behavior.\n- ``shared_knowledge_count``: ``collective_memory_count +\n  knowledge_base_file_count`` (UI label: \"Shared Knowledge\"). ``null``\n  if ``knowledge_base_file_count`` is ``null``.\n\nDeprecated:\n\n- ``knowledge_count``: **deprecated** alias of\n  ``knowledge_chunk_count``. Preserved for backward compatibility so\n  existing consumers keep working; carries the same value. New callers\n  should read ``knowledge_chunk_count``. The alias is scheduled for\n  removal in a future major/breaking release; that removal will be\n  called out separately.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack to describe. If omitted, the caller's\ndefault datapack is used. Use ``datapack_search(query=...)`` to look up the id."
+        },
+        "include_status": {
+          "default": false,
+          "type": "boolean",
+          "description": "Set True to also fetch agent_count, knowledge_base_count,\nand provisioning status. Default False. ``knowledge_base_count`` is\nthe number of knowledge bases (always 1), not a file count; read\n``knowledge_base_file_count`` for files."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "datapack_list",
+    "description": "List the Meko datapacks visible to the current user.\n\nUse this when the user asks to **list**, **show**, or **view all**\ndatapacks, workspaces, or environments. To find one datapack's id by\nname, call ``datapack_search(query=...)`` instead: it is paged and works\nfor accounts of any size.\n\nWith no ``query`` and no ``limit`` this returns every datapack, up to\n``DATAPACK_LIST_MAX_UNFILTERED`` (default 1000). Above that it returns\n``{\"error\": \"too_many_datapacks\"}``; use ``datapack_search`` then.\n\nWith ``query`` and no ``limit`` this returns every match, up to 100.\nWhen more than 100 datapacks match, it returns ``too_many_datapacks``.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional UUID of a datapack for Langfuse project routing."
+        },
+        "query": {
+          "default": "",
+          "type": "string",
+          "description": "Optional case-insensitive substring of the datapack name."
+        },
+        "limit": {
+          "default": 0,
+          "type": "integer",
+          "description": "Optional maximum number of rows, capped at 100. With ``limit``\nthe result is the first ``limit`` matches and does not say\nwhether more exist; ``datapack_search`` returns ``has_more``."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "datapack_search",
+    "description": "Search the Meko datapacks visible to the current user, one page at a time.\n\nUse this to **find a datapack's id**, to show the user some datapacks to\nchoose from, or to browse an account with many datapacks. It works for\naccounts of any size; prefer it over ``datapack_list``.\n\n- Find a datapack by part of its name: ``query=\"acme\"``.\n- Find a datapack by its exact name: ``name=\"Acme Prod\"``.\n- Next page: pass the previous result's ``next_cursor`` as ``cursor``,\n  with the same ``query``, ``name``, ``grant`` and ``sort``. An empty\n  ``next_cursor`` means there are no more pages you can fetch; if\n  ``has_more`` is still true, narrow the search with ``query``.\n- Set ``include_total=True`` only when you must show \"N of M\"; it costs\n  an extra count.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "query": {
+          "default": "",
+          "type": "string",
+          "description": "Case-insensitive substring of the datapack name (max 200 chars)."
+        },
+        "name": {
+          "default": "",
+          "type": "string",
+          "description": "Exact datapack name."
+        },
+        "limit": {
+          "default": 20,
+          "type": "integer",
+          "description": "Rows per page, 1-100 (default 20). Out-of-range values are clamped."
+        },
+        "cursor": {
+          "default": "",
+          "type": "string",
+          "description": "``next_cursor`` from the previous page. Empty for the first page."
+        },
+        "grant": {
+          "default": "",
+          "type": "string",
+          "description": "``owner`` (datapacks you own), ``shared`` (shared with you), or\nempty for both."
+        },
+        "sort": {
+          "default": "created",
+          "type": "string",
+          "description": "``created`` (newest first, default) or ``name`` (A-Z)."
+        },
+        "include_total": {
+          "default": false,
+          "type": "boolean",
+          "description": "Also return how many datapacks match, in ``total``."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional UUID of a datapack for Langfuse project routing."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "datapack_update",
+    "description": "Update a Meko datapack's name, description, and/or conversation-search\nopt-out.\n\nUse this when the user asks to **rename**, **update**, or **change the\ndescription of** a datapack, or to **opt out of** (or back into)\nconversation-history search. ``name``, ``description``, and\n``conversation_search_opt_out`` are all optional; at least one must be\nprovided. If none are provided the tool returns ``nothing_to_update``\nwithout calling the Meko API.\n\nConversation-history search is enabled by default for every datapack —\npass ``conversation_search_opt_out=True`` to stop future conversation\nturns from being embedded into the search cache for this datapack, or\n``False`` to re-enable. This never touches turns already embedded.\n\nEmpty strings are treated as \"not provided\" — passing ``description=\"\"``\nwill NOT clear an existing description; that operation is not supported\nvia MCP.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "type": "string",
+          "description": "UUID of the datapack to update. Use ``datapack_search(query=...)`` to\nlook up the id."
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New human-readable datapack name. Optional."
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New human-readable datapack description. Optional."
+        },
+        "conversation_search_opt_out": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True to stop indexing this datapack's\nfuture conversation turns for search; False to re-enable. Optional."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "datapack_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "knowledgebase_delete_document",
+    "description": "Permanently delete ONE knowledge-base file (document) from a datapack.\nThis cannot be undone: the document's chunks and metadata are removed in\none transaction; deletion of the stored file itself is BEST-EFFORT — the\nresponse's ``s3_deleted`` says whether it happened, so report honestly\nwhen it is false (chunks gone, stored file possibly still present).\n\nUse ONLY when the user explicitly asks to delete/remove a knowledge-base\nfile, and confirm with them before calling. Obtain ``document_id`` from\n``knowledgebase_search`` hits (each hit carries ``document_id``; hits do\nNOT carry a filename) — never guess an id. When confirming, echo the id\nand the matched chunk text; the authoritative filename list is the\nplatform's documents API / the Meko UI, not search hits.\n\nErrors carry the HTTP ``status``: 403 (not the datapack owner, a\nmaintainer, or the file's uploader — report and stop), 409 with code\n``DOCUMENT_PROCESSING`` (still indexing — wait for it to finish, then\nretry), 404 (no such document in this datapack).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "UUID of the document to delete."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. If omitted, the caller's active\ndatapack is used."
+        }
+      },
+      "required": [
+        "document_id",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "knowledgebase_document_status",
+    "description": "Check the upload and indexing status of a file previously uploaded via\nknowledgebase_upload_document.\n\nPoll this with the `key` from knowledgebase_upload_document's response,\npassed here as document_key, until state reaches a terminal value.\nPoll every 10-30 seconds; indexing a large PDF can take minutes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_key": {
+          "type": "string",
+          "description": "The `key` field from knowledgebase_upload_document's response."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Langfuse conversation id for trace nesting."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Datapack UUID. Defaults to the caller's default datapack."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier for trace attribution."
+        }
+      },
+      "required": [
+        "document_key",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "knowledgebase_search",
+    "description": "Hybrid search across the knowledgebase.\n\nInvoke when the user asks to **search**, **find**, or **look up**\ninformation in their knowledgebase or uploaded documents. Combines\nsemantic vector similarity with keyword full-text search over the\n``datapacks.knowledge_bases`` table; each result is tagged with a\n``match_type`` of ``\"semantic\"``, ``\"keyword\"``, or ``\"hybrid\"``.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Natural language description of what to find."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Conversation id from stored chat; nests the trace."
+        },
+        "datapack_id": {
+          "type": "string",
+          "description": "UUID of the datapack to search within."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier scoping the search."
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer",
+          "description": "Maximum number of results to return (default 10)."
+        },
+        "skip_conversation": {
+          "default": false,
+          "type": "boolean",
+          "description": "Deprecated, no-op. Conversation-history checking\nwas removed from this tool; this parameter is kept only so\nexisting callers (e.g. the inference gateway's \"Regenerate with\nfull search\" flow) don't break while they migrate off it."
+        }
+      },
+      "required": [
+        "query",
+        "conversation_id",
+        "datapack_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "knowledgebase_upload_document",
+    "description": "Request a presigned S3 URL for uploading a file to this datapack's\nKnowledge Base.\n\nUse this when the file's content should be searchable later: docs,\nmanuals, policies or notes that people or agents will ask questions\nabout. The file is chunked and indexed, and its passages come back from\nknowledgebase_search and context_search. To keep a file exactly as-is\nand fetch it back whole (a generated report, a result CSV), use\nartifact_put instead. If it is not clear whether the user needs\nsemantic search or whole-file retrieval, ask.\n\nBefore calling this, check that you can send the file's bytes in an\nHTTPS POST yourself. You need the bytes and a shell or code tool; with\none, run `curl -sS -o /dev/null -m 10 -w '%{http_code}' https://s3.amazonaws.com`.\nAny HTTP status means you can reach S3; a connection, DNS or proxy error\nmeans you can't. If you have no shell or code tool, or the check fails,\ndon't call this: the URL can't be used, and on a free or standard account\nthe request holds the file's size against the storage quota for up to 15\nminutes. Point the user to the Cloud UI's Add Knowledge instead.\n\nThis tool does not touch the file's bytes — it only asks api_server for\nsomewhere to put them. To upload, POST the file directly to the returned\n`url` as multipart/form-data: every key in `fields` as a form field (in\norder), then the file's bytes as the last field, named \"file\". With curl:\n\n    curl -F key=<fields.key> -F policy=<fields.policy> ... \\\n         -F file=@/local/path/to/report.pdf <url>\n\n(repeat -F for every key in `fields`, in the order given, file last). A\nbackground watcher notices the object once it lands in S3 and registers\nand indexes it; no follow-up call is needed. Poll\nknowledgebase_document_status with this response's `key` as its\n`document_key` to track progress.\n\nThe URL accepts only a body of exactly `size` bytes whose SHA-256 is\n`content_hash`, for 5 minutes. If S3 answers 400 EntityTooSmall or\nEntityTooLarge, `size` was wrong: call this tool again with the right\nsize and upload through the new URL. The earlier URL can never succeed\nand expires on its own.\n\nfilename/size/content_hash are validated before api_server is called, so\na bad request fails at once with VALIDATION_ERROR. content_head_base64 is\nrequired (content_head_base64_required when missing) and is sniffed\nagainst the extension before a URL is issued. Send the file's first 3072\nbytes, or the whole file if it is shorter: a sample shorter than that, or\nlonger than `size`, is rejected as VALIDATION_ERROR, since it means `size`\nis wrong. Text files must be UTF-8, since indexing reads nothing else. The\nsniff only catches obvious mismatches early (a renamed file); api_server\nchecks the stored bytes again regardless.\n\nIf identical content (by SHA-256) is already in this datapack, the\nresponse has already_uploaded=true, an empty url and no fields: nothing\nneeds uploading. If that file's indexing never started or failed, asking\nagain queues it again.\n\nOn a free or standard account, an issued URL holds its `size` against the\nstorage quota until the file is registered, or for up to 15 minutes if it\nis never uploaded. FREE_TIER_KB_STORAGE_LIMIT /\nSTANDARD_TIER_KB_STORAGE_LIMIT (status 402) mean there is no room: tell\nthe user to free space or upgrade rather than retrying.\n\nAccepted file types (by extension): .pdf, .txt, .text, .md, .json, .csv,\n.xml, .html, .htm. Maximum size per file: 5 MB on Free, 50 MB on\nStandard, 60 MB on Pro and above (VALIDATION_ERROR when larger).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "Original filename including extension (e.g. \"report.pdf\")."
+        },
+        "size": {
+          "type": "integer",
+          "description": "The file's exact size in bytes."
+        },
+        "content_hash": {
+          "type": "string",
+          "description": "SHA-256 hex digest of the file's bytes (e.g. `sha256sum` locally)."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Langfuse conversation id for trace nesting."
+        },
+        "content_head_base64": {
+          "type": "string",
+          "description": "Base64 of the file's first 3072 bytes (the whole\n           file if shorter). Required."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target datapack UUID. Defaults to the caller's default datapack."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier for trace attribution."
+        }
+      },
+      "required": [
+        "filename",
+        "size",
+        "content_hash",
+        "conversation_id",
+        "content_head_base64"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_add",
+    "description": "Store a fact as a long-term memory.\n\nInvoke when the caller has an explicit fact to persist: the user has\nasked to save something, the fact appears only in the assistant's\noutput or a tool result, or a prior stored memory must be overwritten\nwith a correction.\n\nMemories are stored in a pgvector collection; mem0 also links each\nmemory to the named entities it mentions (people, projects, tools) in\na companion entity-store collection, which boosts later searches that\nname those entities.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Plain text content to store as a memory."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from ``conversation_create``. Required for\ntrace nesting."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. Determines which isolated\nvector collection the memory is stored in. Coding agents use\n``<client>:<repo-basename>`` (e.g. ``claude_code:myrepo``);\nother clients use a stable client name (e.g.\n``claude_desktop``); omit for the cross-project\n``meko_agent`` bucket."
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional. Langfuse **trace metadata only** — it is attached\nas a trace tag and is NOT persisted on the memory row, so it\ndoes not scope the write and cannot be used to retrieve it. The\nrow's filterable conversation tag comes from\n``conversation_id`` alone; to read these memories back with a\nconversation filter, pass that ``conversation_id`` as\n``memory_search(run_id=…)``."
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON string of arbitrary metadata to attach."
+        },
+        "messages": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON string of conversation history as a list\nof ``{\"role\": \"...\", \"content\": \"...\"}`` objects. When\nprovided, this is used instead of wrapping ``text`` as a\nsingle user message."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "text",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_delete_all",
+    "description": "Permanently delete memories. This cannot be undone.\n\nDeletes every memory that matches ALL of: this ``agent_id``, the calling\nuser, this ``datapack_id``, and, when given, this ``run_id``. Other agents'\nand other users' memories in the datapack are never touched.\n\nTwo defaults widen or move the target without saying so in the call:\nan omitted ``agent_id`` means the ``meko_agent`` bucket, and an omitted\n``datapack_id`` means your default datapack. The response's ``scope``\nechoes the values actually used.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier whose memories to delete. Defaults to\n``meko_agent``."
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional. Narrows the delete to rows tagged with this\n`meko_conversation_id`. Normalized the same way as\n`memory_search(run_id=…)`, so a search preview and this delete\ntarget the same rows. Must be a conversation id (32 lowercase hex\nchars, hyphens optional); anything else returns `invalid_run_id`\nrather than falling back to deleting every memory for the agent."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Datapack to delete from. Defaults to your default\ndatapack. A stdio server has no default, so pass it there."
+        }
+      },
+      "required": [
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_delete_by_id",
+    "description": "Permanently delete a single memory by its UUID. This cannot be undone.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "description": "UUID of the memory to delete. Obtain from the ``id`` field\nreturned by memory_search or memory_get_all."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier whose memory store contains this memory.\nMust match the writer's `agent_id`."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "memory_id",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_get_all",
+    "description": "List memories for the current datapack, one page at a time.\n\nEach call returns one page plus ``total`` and ``total_pages``. To read\nevery memory, call again with ``page`` = 2, 3, ... up to ``total_pages``.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier, used for trace attribution. NOTE: this\nlisting is scoped by datapack + user, not filtered by agent_id, so\nit returns memories written by any client. For naming, coding\nagents use \"<client>:<repo-basename>\", Claude Desktop uses\n\"claude_desktop\"."
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional run identifier (ignored, kept for backward compatibility)."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "promoted": {
+          "default": false,
+          "type": "boolean",
+          "description": "If True, return promoted memories (GET /promoted-memories).\nIf False (default), return regular memories (GET /memories)."
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional 1-based page number. Defaults to 1."
+        },
+        "page_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional rows per page. Defaults to 20; the server caps it\nat 100, and the response's ``page_size`` shows the value used."
+        }
+      },
+      "required": [
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_get_by_id",
+    "description": "Retrieve a single memory by its UUID.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "description": "UUID of the memory to fetch. Obtain from the ``id`` field\nreturned by memory_search or memory_get_all — must be a valid UUID,\nnot an arbitrary string."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier whose memory store contains this memory."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "memory_id",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_promote",
+    "description": "Promote memories into the datapack's shared knowledge base.\n\nMoves each memory out of the agent's private mem0 store into the tenant\nknowledge base + promoted collection, then evicts it\nfrom mem0 — a one-way action. Only datapack owners and maintainers may\npromote; viewers and contributors get a permission error (403 FORBIDDEN).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "memory_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "UUIDs to promote. Obtain from the ``id`` field returned by\nmemory_search or memory_get_all — must be valid UUIDs, not an\narbitrary string."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier whose memories these are."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target datapack. Defaults to the caller's default datapack."
+        }
+      },
+      "required": [
+        "conversation_id",
+        "memory_ids"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_search",
+    "description": "Hybrid search across stored memories.\n\nCombines semantic (vector) similarity with keyword matching and an\nentity boost: memories that mention the specific things named in the\nquery (people, projects, tools) rank higher. Returns matching\nmemories under a \"results\" key.\n\nResults below the runtime ``memory_search_min_score`` setting (mem0's\nraw, unfused cosine-similarity value — see _sufficiency_score — default\n0.2, NOT the fused hybrid score results are ranked by) are dropped as\nweak matches rather than returned. A query with no memory above that\nfloor can legitimately return an empty ``results`` list even when\n``limit`` allowed more. Only this tool applies the floor. It answers from one\nbucket, so a weak hit becomes the answer. ``context_search`` calls the\nunderlying mem0 search directly and keeps the unfiltered list, because\nits KB and conversation buckets sit beside the memory one and let the\ncaller discount a weak row.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Natural language description of what to find."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "Used purely for Langfuse trace nesting (so the\nsearch call appears under the active conversation in\ntraces). Does not filter results; pass ``run_id`` to filter."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier. NOTE: memory_search is cross-agent — it\nsearches every agent's memories in the datapack regardless of this\nvalue (results are scoped by datapack + user, not by agent_id), so\nyou will see rows written by other clients. The value is used only\nfor trace attribution. For naming, coding agents use\n\"<client>:<repo-basename>\", Claude Desktop uses \"claude_desktop\"."
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer",
+          "description": "Maximum number of results to return (default 10)."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional. UUID of the datapack to search within. Defaults\nto the caller's default datapack when omitted."
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional. Restricts the search to memories tagged with\nthis ``meko_conversation_id``. Omit for cross-conversation\nresults."
+        }
+      },
+      "required": [
+        "query",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "memory_update",
+    "description": "Overwrite an existing memory's text by its UUID.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "description": "UUID of the memory to update. Obtain from the ``id`` field\nreturned by memory_search or memory_get_all — must be a valid UUID,\nnot an arbitrary string."
+        },
+        "text": {
+          "type": "string",
+          "description": "Replacement text for the memory."
+        },
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create, for trace nesting."
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent identifier whose memory store contains this memory.\nMust match the writer's `agent_id`."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "memory_id",
+        "text",
+        "conversation_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_add_datapack",
+    "description": "File a datapack into a project folder, or move it to a different one.\n\nA datapack can belong to only one project, so filing one that is already\nfiled MOVES it rather than failing. Use ``project_describe`` to find\n``folder_id``.\n\nNeeds ownership of the DATAPACK, not ownership of the project — where a\ndatapack lives is its owner's call. A datapack somebody shared with you\ncannot be filed, and says so plainly (\"only the datapack owner can change\nwhere it is filed\"), so unlike the project and folder writes there is no\nnot-found to misread here.\n\nTo create a datapack directly into a folder instead, pass ``folder_id`` to\n``datapack_create`` — one call rather than two.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "type": "string",
+          "description": "UUID of the datapack to file."
+        },
+        "folder_id": {
+          "type": "string",
+          "description": "UUID of the destination folder."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "datapack_id",
+        "folder_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_create",
+    "description": "Create a project, optionally with its first folders.\n\nUse this when the user asks to **create**, **add** or **start** a project\nto group datapacks around one outcome.\n\nAsk the user what the project is for before calling: the description is\nwhat tells a later reader, and a later search, which project a piece of\nwork belongs in. Ask which folders they want too — a folder is one kind or\nstage of work, and starting with the right two or three is easier than\nreorganising later. Omitting ``folders`` gives the project the default\nlayout's folders, which you can change afterwards.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_name": {
+          "type": "string",
+          "description": "Name of the new project."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "description": "What outcome the project serves. Optional but worth asking for."
+        },
+        "folders": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional folder names to create. Folders do not nest."
+        }
+      },
+      "required": [
+        "project_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_delete",
+    "description": "Delete a project.\n\nThe project and its folders are removed. The datapacks filed inside are\n**not** deleted: they become **Unfiled** and keep working, with their\nconversations, memory and knowledge untouched, and can be filed into\nanother project later. This deletes structure, not content.\n\nIt is still irreversible — the folder layout cannot be recovered — so\nconfirm with the user first, naming the project. To delete a datapack, use\n``datapack_delete``.\n\nOwner-only: a project shared with you answers \"not found\".",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project to delete. Required — there is no\ndefault, to avoid deleting the wrong project."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_describe",
+    "description": "Describe one project: its folders and the datapacks filed in each.\n\nUse this when the user asks **what is in** a project, or to find which\nfolder a datapack sits in before moving it. This is also how to get a\n``folder_id`` for ``project_add_datapack`` or ``datapack_create``.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project. Use ``project_list`` to find it."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_folder_create",
+    "description": "Add a folder to a project.\n\nOwner-only: writes to a project shared with you answer \"not found\", not\na permission error. Do not read that as \"it does not exist\" and create a\nreplacement — ask the owner.\n\nA folder is one kind or stage of work. Folders do not nest. Use this when\nthe user asks to **add** or **create** a folder in a project.\n\nThe description is worth asking for: it is what a later knowledge or memory\nsearch filters on when deciding which folder a new datapack belongs in, and\na folder name alone rarely says what belongs inside.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project. Use ``project_list`` to find it."
+        },
+        "folder_name": {
+          "type": "string",
+          "description": "Name of the new folder, unique within the project."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "description": "What belongs in the folder. Optional but worth asking for."
+        }
+      },
+      "required": [
+        "project_id",
+        "folder_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_folder_delete",
+    "description": "Delete a folder from a project.\n\nThe folder is removed and the rest of the project is left as it is. Any\ndatapacks inside become **Unfiled** and keep working — this deletes\nstructure, not content. To delete a datapack, use ``datapack_delete``.\n\nOwner-only: writes to a project shared with you answer \"not found\", not\na permission error. Do not read that as \"it does not exist\" and create a\nreplacement — ask the owner.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project."
+        },
+        "folder_id": {
+          "type": "string",
+          "description": "UUID of the folder. Use ``project_describe`` to find it."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "project_id",
+        "folder_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_folder_update",
+    "description": "Rename a folder, change its description, or both.\n\nPass only what should change; anything omitted is left alone. Use\n``project_describe`` to find ``folder_id``.\n\nOwner-only: writes to a project shared with you answer \"not found\", not\na permission error. Do not read that as \"it does not exist\" and create a\nreplacement — ask the owner.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project."
+        },
+        "folder_id": {
+          "type": "string",
+          "description": "UUID of the folder. Use ``project_describe`` to find it."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "folder_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New name. Omit to leave the name alone."
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New description. Omit to leave it alone; pass ``\"\"`` to\nclear it. Omitted and empty are different answers, which is why\nthis is None rather than \"\" by default."
+        }
+      },
+      "required": [
+        "project_id",
+        "folder_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_list",
+    "description": "List the Meko projects the current user can see.\n\nA project groups datapacks that work toward one outcome. Use this when the\nuser asks to **list**, **show** or **view** their projects, or when you\nneed a ``project_id`` before calling any other project tool.\n\nThe result covers projects the user owns AND projects shared with them.\nOnly the owner can change a shared one.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_remove_datapack",
+    "description": "Take a datapack out of its project, leaving it Unfiled.\n\nThe datapack is NOT deleted — it keeps working exactly as before, just\nwithout a project. To delete it, use ``datapack_delete``. To move it\nsomewhere else instead, use ``project_add_datapack``, which moves rather\nthan failing.\n\nNeeds ownership of the DATAPACK, not ownership of the project it sits in\n— the same rule ``project_add_datapack`` follows, because where a\ndatapack lives is its owner's call. A non-owner is told so plainly\n(\"only the datapack owner can change where it is filed\"), so unlike the\nproject and folder writes there is no not-found to misread here.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "type": "string",
+          "description": "UUID of the datapack to unfile."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "datapack_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_stats",
+    "description": "Totals for one project: what it holds across every datapack in it.\n\nUse this when the user asks **how much** is in a project — searches,\nconversations, artifacts, indexed knowledge-base files. For the structure\nrather than the totals, use ``project_describe``.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project. Use ``project_list`` to find it."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_update",
+    "description": "Rename a project, change its description, or both.\n\nUse this when the user asks to **rename** a project or to change **what it\nis for**. Pass only what should change; anything omitted is left alone.\nOwner-only: a project shared with you answers \"not found\".",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "UUID of the project. Use ``project_list`` to find it."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Langfuse conversation id from stored chat; nests the trace."
+        },
+        "project_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New name. Omit to leave the name alone."
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "New description. Omit to leave it alone; pass ``\"\"`` to\nclear it. Omitted and empty are different answers, which is why\nthis is None rather than \"\" by default."
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "selflearning_query_log",
+    "description": "Read the datapack's search log: the searches that ran through ``context_search``, newest first, 10 a page.\n\nBy default only ``low`` searches (little or nothing found) are returned, since that is where fixes are. Ask\nfor ``mid``, ``high`` or ``all`` with ``band``, or narrow by ``reason`` or ``category``. Every row carries its\nshortfall (``category``, ``reason``, ``sub_type``) and ``todos``, the ids of the to-dos it falls under.\n\nReasons: ``nothing_matched``, ``below_floor``, ``weak_match``, ``partial_match``, ``vague_prompt``,\n``stale_source``, ``source_not_searched``, ``source_error``. Categories: ``coverage``, ``quality``, ``error``.\n\nPass ``log_id`` (from a row, or from ``selflearning_status`` examples) instead to read one search in full: its\nranked results with scores and what each source did.\n\nPage with ``page``; ``has_more`` says whether another page follows. Needs the datapack's owner or maintainer\nrole.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. If omitted, the caller's default datapack is used."
+        },
+        "band": {
+          "default": "low",
+          "type": "string",
+          "description": "``low`` (default), ``mid``, ``high``, ``all``, or a comma list such as ``low,mid``."
+        },
+        "reason": {
+          "default": "",
+          "type": "string",
+          "description": "Only searches with this reason."
+        },
+        "category": {
+          "default": "",
+          "type": "string",
+          "description": "Only searches in this category."
+        },
+        "log_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of one search to read in full. Ignores the other filters."
+        },
+        "page": {
+          "default": 1,
+          "type": "integer",
+          "description": "1-based page of 10 rows."
+        },
+        "last": {
+          "default": "7d",
+          "type": "string",
+          "description": "Window as ``Nd``. Default ``7d``. The log keeps about 30 days."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Conversation id from conversation_create; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "selflearning_shortfalls",
+    "description": "List the distinct searches behind one to-do, with how far each has been fixed.\n\nTake ``todo_id`` from ``selflearning_status`` (``add_context``, ``clarify_prompts``, ``refresh_sources`` or\n``check_source_errors``). Each search is a distinct query, most repeated first, 10 a page, with:\n\n- ``band``, ``best_score`` and ``reason``: how it fell short.\n- ``count``: how many times it was asked.\n- ``state``: ``open`` (nothing added since), ``unverified`` (something was added and no run has checked it) or\n  ``verified`` (the latest replay reached ``high``).\n- ``log_id``: pass it to ``selflearning_verify`` to replay it, or to ``selflearning_query_log`` to see its ranked\n  results. ``test_prompt_id`` and ``latest_run`` are set once it has been saved and replayed.\n\nNeeds the datapack's owner or maintainer role.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "todo_id": {
+          "type": "string",
+          "description": "The to-do to list."
+        },
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. If omitted, the caller's default datapack is used."
+        },
+        "page": {
+          "default": 1,
+          "type": "integer",
+          "description": "1-based page of 10."
+        },
+        "last": {
+          "default": "",
+          "type": "string",
+          "description": "Window as ``Nd``. Default is the Self-learning tab's own (14 days)."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Conversation id from conversation_create; nests the trace."
+        }
+      },
+      "required": [
+        "todo_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "selflearning_status",
+    "description": "Read a datapack's context quality and what to fix, as shown on its Self-learning tab.\n\nStart here. It returns how many recent searches found a strong match (``quality``), the to-do list, and a\nbreakdown of the weak searches by band, shortfall category and reason. Each to-do has:\n\n- ``id``: ``add_context``, ``clarify_prompts``, ``refresh_sources`` or ``check_source_errors`` for fixes.\n- ``shortfall``: the category or reason the to-do is about (for example ``category = coverage``).\n- ``searches`` and ``points``: how many searches it affects and the quality points fixing it would add.\n- ``examples``: up to three of the searches behind it.\n\n``open_fixes`` lists the fix to-dos with something to do. Read the searches behind one with\n``selflearning_shortfalls``. Fix with the existing ``memory_add`` or ``knowledgebase_upload_document``, then\ncheck it with ``selflearning_verify``. Only searches made through ``context_search`` are counted.\n\nNeeds the datapack's owner or maintainer role.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. If omitted, the caller's default datapack is used."
+        },
+        "last": {
+          "default": "",
+          "type": "string",
+          "description": "Window as ``Nd``, for example ``7d`` or ``30d``. Default is the Self-learning tab's own (14 days)."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Conversation id from conversation_create; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "selflearning_verify",
+    "description": "Replay a weak search to check that a fix worked, and report the band before and after.\n\nPass ``log_id`` (from ``selflearning_shortfalls`` or ``selflearning_query_log``) to save that search as a test\nprompt and replay it, or ``test_prompt_id`` to replay one already saved. Use it after adding a memory or document,\nnot before: a replay with nothing added says so (``nothing_added_since_last_run``) and tells you nothing.\n\nThe replay runs a real search as you. It counts against your search limit, and a replay is not stored in any\nconversation or counted in the datapack's search log or quality figures. A replay is also limited to 10 a\nminute per user on a datapack.\n\nA document you uploaded may still be indexing: ``indexing: true`` means the result may not include it yet, so\nrun again once it is false.\n\nNeeds the datapack's owner or maintainer role and a key with write scope.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "datapack_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of the datapack. If omitted, the caller's default datapack is used."
+        },
+        "log_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of a search from the log to save and replay."
+        },
+        "test_prompt_id": {
+          "default": "",
+          "type": "string",
+          "description": "UUID of a saved test prompt to replay. Give this or ``log_id``, not both."
+        },
+        "conversation_id": {
+          "default": "",
+          "type": "string",
+          "description": "Conversation id from conversation_create; nests the trace."
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "track_token_usage",
+    "description": "Record a token-usage GENERATION observation under the conversation\ntrace. Lets external callers (the inference gateway, future\nservices) attribute LLM / embedding / extraction token spend so\nMeko's free-tier counters reflect real usage.\n\nEach call writes one Langfuse generation row with ``usage =\n{input, output, total}`` populated; the matching api_server query\n(``SumTokenUsageByUserAndAgent``) sums them per user.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "description": "UUID from conversation_create. Determines\nwhich trace the observation hangs off."
+        },
+        "name": {
+          "type": "string",
+          "description": "Short label for the observation — used both in the\nLangfuse UI and to disambiguate token sinks in dashboards.\nRecommended: \"LLM Response\", \"LLM Summarization\",\n\"Entity Extraction\", \"Embedding (KB query)\",\n\"Embedding (conversation)\"."
+        },
+        "input_tokens": {
+          "default": 0,
+          "type": "integer",
+          "description": "Prompt / input token count from the provider's\nusage payload."
+        },
+        "output_tokens": {
+          "default": 0,
+          "type": "integer",
+          "description": "Completion / output token count. 0 for embeddings."
+        },
+        "total_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Provider-reported total. Defaults to\ninput + output when omitted (matches OpenAI's convention)."
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional model identifier (e.g. \"gpt-4o-mini\",\n\"text-embedding-3-small\"). Shown in the Langfuse UI."
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional message UUID returned by\n``conversation_add_message``. When provided, the\nobservation's metadata carries it so token spend can be\ncorrelated to a specific turn (per-turn rollups, etc.)."
+        },
+        "datapack_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Routes to the correct tenant's Langfuse project.\nOmit to use the default datapack for the request context."
+        }
+      },
+      "required": [
+        "conversation_id",
+        "name"
+      ],
+      "type": "object"
+    }
+  }
+]
