@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dejafix.agents import prompts
+from dejafix.agents.casefile import JSON_CONTENT_TYPE, case_file_name, put_artifact
 from dejafix.agents.memory import format_correction_memory, format_fix_memory, parse_fix_memory
 from dejafix.agents.retrieval import Retrieval, retrieve
 from dejafix.agents.schemas import ProposedFix, ReuseCheck, ReviewVerdict, TriageResult, clip
@@ -310,6 +311,19 @@ def _step(
 class CurationResult:
     memory_id: str
     promoted: bool
+    case_file_hash: str = ""
+
+
+@dataclass(frozen=True)
+class CorrectionResult:
+    memory_id: str
+    case_file_hash: str = ""
+
+
+async def _store_case_file(meko: MekoGateway, ticket_ref: str, case_file: bytes | None) -> str:
+    if not case_file:
+        return ""
+    return await put_artifact(meko, filename=case_file_name(ticket_ref), content=case_file, content_type=JSON_CONTENT_TYPE)
 
 
 async def curate_approved_fix(
@@ -321,11 +335,17 @@ async def curate_approved_fix(
     category: str,
     summary: str,
     steps: Sequence[str],
+    case_file: bytes | None = None,
 ) -> CurationResult:
-    """Store a human-approved fix as the curator's memory and promote it to collective memory."""
+    """Store a human-approved fix as the curator's memory and promote it to collective memory.
+
+    The case file is stored first, so the shared memory can point to its evidence."""
     trace = AgentTrace(meko, agent=curator_agent, ticket_ref=ticket_ref)
     curator = await trace.open()
-    text = format_fix_memory(signature=signature, category=category, summary=summary, steps=steps, ticket_ref=ticket_ref)
+    case_file_hash = await _store_case_file(curator, ticket_ref, case_file)
+    text = format_fix_memory(
+        signature=signature, category=category, summary=summary, steps=steps, ticket_ref=ticket_ref, case_file=case_file_hash
+    )
     added = await curator.call(
         "memory_add",
         text=text,
@@ -338,20 +358,27 @@ async def curate_approved_fix(
     await trace.record(
         "curate",
         input_text=text,
-        output={"memory_id": memory_id, "promoted": memory_id in inserted},
+        output={"memory_id": memory_id, "promoted": memory_id in inserted, "case_file": case_file_hash},
         reasoning="A human approved this fix, so it becomes shared memory for every resolver.",
-        plan=["Store the approved fix as memory", "Promote it to the datapack's collective memory"],
+        plan=["Store the case file as an artifact", "Store the approved fix as memory", "Promote it to the datapack's collective memory"],
     )
-    return CurationResult(memory_id=memory_id, promoted=memory_id in inserted)
+    return CurationResult(memory_id=memory_id, promoted=memory_id in inserted, case_file_hash=case_file_hash)
 
 
 async def record_human_correction(
-    meko: MekoGateway, *, ticket_ref: str, signature: str, rejected_summary: str, note: str
-) -> str:
+    meko: MekoGateway,
+    *,
+    ticket_ref: str,
+    signature: str,
+    rejected_summary: str,
+    note: str,
+    case_file: bytes | None = None,
+) -> CorrectionResult:
     """Store a reviewer's rejection as a learning. Not promoted: it guides, it doesn't answer."""
     trace = AgentTrace(meko, agent=HUMAN_REVIEW_AGENT, ticket_ref=ticket_ref)
     reviewer = await trace.open()
-    text = format_correction_memory(signature=signature, rejected_summary=rejected_summary, note=note)
+    case_file_hash = await _store_case_file(reviewer, ticket_ref, case_file)
+    text = format_correction_memory(signature=signature, rejected_summary=rejected_summary, note=note, case_file=case_file_hash)
     added = await reviewer.call(
         "memory_add",
         text=text,
@@ -362,10 +389,10 @@ async def record_human_correction(
     await trace.record(
         "human_correction",
         input_text=text,
-        output={"memory_id": memory_id},
+        output={"memory_id": memory_id, "case_file": case_file_hash},
         reasoning="A human rejected the proposed fix; the note is kept so resolvers avoid the same mistake.",
     )
-    return memory_id
+    return CorrectionResult(memory_id=memory_id, case_file_hash=case_file_hash)
 
 
 def _first_memory_id(reply: Any) -> str:

@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from dejafix.agents.schemas import ProposedFix, ReuseCheck, ReviewVerdict, TriageResult
+from dejafix.agents.schemas import GapArticle, ProposedFix, ReuseCheck, ReviewVerdict, TriageResult
 from dejafix.llm import LLMError, LLMResult, LLMUsage
 
 # Token costs per schema, shaped like real usage: solving reads documentation and costs most.
@@ -17,6 +17,7 @@ TOKENS = {
     "ReuseCheck": (700, 200),
     "ProposedFix": (3200, 700),
     "ReviewVerdict": (1600, 150),
+    "GapArticle": (1400, 450),
 }
 
 PAYOUT_SIGNATURE = "Card payout still pending because payouts settle on T+2 business days excluding weekends"
@@ -40,6 +41,7 @@ class ScriptedLLM:
     review_verdict: str = "approve_for_human"
     solve_confidence: float = 0.9
     fail_with: LLMError | None = None
+    gap_covers: bool = True
     overrides: dict[str, Callable[[str], BaseModel]] = field(default_factory=dict)
 
     async def run(self, *, system: str, prompt: str, schema: type[Any], effort: str) -> LLMResult[Any]:
@@ -77,6 +79,18 @@ class ScriptedLLM:
             )
         if name == "ReviewVerdict":
             return ReviewVerdict(verdict=self.review_verdict, policy_issues=[], reasoning="Follows the docs and policy.")
+        if name == "GapArticle":
+            return GapArticle(
+                covers_query=self.gap_covers,
+                title="Payout delayed after a bank holiday weekend",
+                body=(
+                    "A payout delayed after a bank holiday weekend is expected: card payments settle on T+2 business days, "
+                    "and weekends and bank holidays are not business days.\n\n"
+                    "1. Open Payouts > Calendar to see the expected date."
+                ),
+                cited_sources=["approved fix T1", "payouts.md"],
+                reasoning="The search lacked a direct answer for bank holidays; the approved fix covers it.",
+            )
         raise AssertionError(f"unexpected schema {name}")
 
     def schemas(self) -> list[str]:

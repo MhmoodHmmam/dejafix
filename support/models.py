@@ -75,6 +75,8 @@ class Resolution(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     human_note = models.TextField(max_length=MAX_NOTE_LENGTH, blank=True)
     promoted_memory_id = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
+    # SHA-256 of the case file (the decision record) stored as a Meko artifact when a human decides.
+    case_file_hash = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -124,3 +126,78 @@ class AgentRun(models.Model):
     @property
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
+
+
+MAX_QUERY_LENGTH = 500
+MAX_ARTICLE_TITLE_LENGTH = 120
+MAX_ARTICLE_LENGTH = 6000
+
+
+class KnowledgeGap(models.Model):
+    """A search that Meko's self-learning log says found too little, and our fix for it.
+
+    Lifecycle: open -> drafted | needs_author -> publishing -> published -> verified | still_weak.
+    Publishing (a human action) uploads the article to Meko's knowledge base; verifying replays
+    the original search with `selflearning_verify` and records the band after the fix.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        DRAFTED = "drafted", "Draft ready for review"
+        NEEDS_AUTHOR = "needs_author", "Needs a human author"
+        PUBLISHING = "publishing", "Publishing"
+        PUBLISHED = "published", "Published, not verified"
+        VERIFIED = "verified", "Verified (search now high)"
+        STILL_WEAK = "still_weak", "Published, search still weak"
+        DISMISSED = "dismissed", "Dismissed"
+
+    # Shortfalls are listed per distinct query, so the query is the gap's identity.
+    query = models.CharField(max_length=MAX_QUERY_LENGTH, unique=True)
+    log_id = models.CharField(max_length=MEKO_ID_LENGTH)
+    test_prompt_id = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
+    agent = models.CharField(max_length=AGENT_NAME_LENGTH)
+    ticket = models.ForeignKey(Ticket, null=True, blank=True, on_delete=models.SET_NULL, related_name="knowledge_gaps")
+    reason = models.CharField(max_length=40, blank=True)
+    band_before = models.CharField(max_length=10)
+    score_before = models.FloatField(null=True, blank=True)
+    times_asked = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    draft_title = models.CharField(max_length=MAX_ARTICLE_TITLE_LENGTH, blank=True)
+    draft_body = models.TextField(max_length=MAX_ARTICLE_LENGTH, blank=True)
+    draft_reasoning = models.CharField(max_length=600, blank=True)
+    document_key = models.CharField(max_length=255, blank=True)
+    published_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    published_at = models.DateTimeField(null=True, blank=True)
+    band_after = models.CharField(max_length=10, blank=True)
+    score_after = models.FloatField(null=True, blank=True)
+    # Meko's replay grades every source, conversations included (our own traces among them), so
+    # we also record what ranked first and where the article itself ranks in the knowledge base.
+    source_after = models.CharField(max_length=20, blank=True)
+    kb_rank_after = models.PositiveSmallIntegerField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    PUBLISHED_STATES = (Status.PUBLISHED, Status.VERIFIED, Status.STILL_WEAK)
+    EDITABLE_STATES = (Status.OPEN, Status.DRAFTED, Status.NEEDS_AUTHOR)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["status", "id"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(status__in=["published", "verified", "still_weak"]) | ~Q(document_key=""),
+                name="knowledgegap_published_has_document",
+            ),
+            models.CheckConstraint(
+                condition=Q(score_before__isnull=True) | (Q(score_before__gte=0) & Q(score_before__lte=1)),
+                name="knowledgegap_score_before_0_1",
+            ),
+            models.CheckConstraint(
+                condition=Q(score_after__isnull=True) | (Q(score_after__gte=0) & Q(score_after__lte=1)),
+                name="knowledgegap_score_after_0_1",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.query[:60]} ({self.status})"

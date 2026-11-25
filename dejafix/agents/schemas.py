@@ -51,6 +51,21 @@ class ReviewVerdict(BaseModel):
     reasoning: str = Field(description="One or two sentences explaining the verdict.")
 
 
+class GapArticle(BaseModel):
+    covers_query: bool = Field(
+        description="True only if the approved fixes and documentation given fully answer the weak search."
+    )
+    title: str = Field(description="Help-center article title, at most 12 words.")
+    body: str = Field(
+        description=(
+            "Markdown article body, 80 to 300 words: the cause, then numbered steps with dashboard paths. "
+            "Only facts from the sources given. No customer names, ids, amounts or dates."
+        )
+    )
+    cited_sources: list[str] = Field(description="Which approved fixes or documents each part relies on.")
+    reasoning: str = Field(description="One or two sentences on what the article adds that the search was missing.")
+
+
 def clip(text: str, limit: int) -> str:
     """Trim model text to a storage limit on a word boundary."""
     text = " ".join(text.split())

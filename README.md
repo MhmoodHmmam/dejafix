@@ -7,8 +7,8 @@ Before solving a ticket, each agent searches Meko's shared memory and knowledge 
 Verified fixes become collective memory, and human corrections become learnings. Every
 decision leaves a trace that explains *why*.
 
-> Status: week 2. Four agents, human review in the Django admin, 36 synthetic tickets and a
-> 9-document knowledge base. The dashboard and the benchmark come next.
+> Status: week 3. Four agents, human review in the Django admin, a self-learning loop on Meko's
+> `selflearning_*` tools, and case files stored as Meko artifacts. The benchmark and the dashboard come next.
 
 ## Setup (Windows PowerShell)
 
@@ -66,6 +66,23 @@ promotes it to the datapack's collective memory. Repeat tickets then reuse it.
    - Reject with a note: the note becomes a learning the next resolver reads.
 
 Every step is a Meko conversation turn with `reasoning`, `plan` and token usage (`track_token_usage`).
+Every human decision also stores a **case file** (the agents' steps, reasoning and scores, with no
+ticket text or names) as a Meko artifact. The shared memory links to it (`Case file: <sha256>`).
+
+## The self-learning loop
+
+Meko grades every `context_search`. DejaFix uses those grades to find and close its own knowledge gaps:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py find_gaps            # weak searches by our resolvers (read-only)
+.\.venv\Scripts\python.exe manage.py draft_gap_articles   # librarian drafts from human-approved fixes (calls Claude)
+# admin: Knowledge gaps > edit the draft > "Publish to the Meko knowledge base"
+.\.venv\Scripts\python.exe manage.py verify_gaps          # replay each search: band before -> after
+```
+
+`verify_gaps` also records what the replay ranked first and where the article ranks in the
+knowledge base. Meko's grade counts past conversations too, so a better band alone doesn't prove
+the article helped.
 
 ## Tests
 
@@ -81,7 +98,7 @@ Tests never touch the network. They run against an in-process fake of Meko's MCP
 | Path | Purpose |
 |---|---|
 | `dejafix/meko/` | Meko gateway: MCP connection, schema-checked calls, agent/conversation/datapack scoping, timeouts, retries for reads only, call records |
-| `dejafix/agents/` | Agents: schemas, prompts, retrieval, traces, workflow |
+| `dejafix/agents/` | Agents: schemas, prompts, retrieval, traces, workflow, self-learning (`knowledge.py`), case files (`casefile.py`) |
 | `dejafix/llm.py` | Claude wrapper: typed output, effort, refusal fallback, usage |
 | `support/` | Django app: models, services, admin review, management commands |
 | `data/` | Synthetic LumenPay knowledge base and tickets |

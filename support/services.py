@@ -16,6 +16,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 from django.utils import timezone
 
+from dejafix.agents.casefile import CASE_FILE_STEP_FIELDS, build_case_file
 from dejafix.agents.pipeline import (
     PipelineOutcome,
     TicketInput,
@@ -169,6 +170,7 @@ def approve_resolution(
         raise ReviewError("This fix was already reviewed.")
 
     calls: list[MekoCallRecord] = []
+    case_file = _case_file(resolution, decision="approved", note=note)
 
     async def curate():
         async with _factory(session_factory)(calls) as meko:
@@ -180,6 +182,7 @@ def approve_resolution(
                 category=resolution.category,
                 summary=resolution.fix_summary,
                 steps=resolution.fix_steps,
+                case_file=case_file,
             )
 
     try:
@@ -192,7 +195,9 @@ def approve_resolution(
         raise
 
     with transaction.atomic():
-        Resolution.objects.filter(pk=resolution.pk).update(promoted_memory_id=result.memory_id)
+        Resolution.objects.filter(pk=resolution.pk).update(
+            promoted_memory_id=result.memory_id, case_file_hash=result.case_file_hash
+        )
         Ticket.objects.filter(pk=resolution.ticket_id).update(status=Ticket.Status.CLOSED, updated_at=timezone.now())
     resolution.refresh_from_db()
     return resolution
@@ -216,6 +221,7 @@ def reject_resolution(
         raise ReviewError("This fix was already reviewed.")
 
     calls: list[MekoCallRecord] = []
+    case_file = _case_file(resolution, decision="rejected", note=note)
 
     async def correct():
         async with _factory(session_factory)(calls) as meko:
@@ -225,16 +231,41 @@ def reject_resolution(
                 signature=resolution.problem_signature,
                 rejected_summary=resolution.fix_summary,
                 note=note,
+                case_file=case_file,
             )
 
     try:
-        async_to_sync(correct)()
+        result = async_to_sync(correct)()
     except MekoError:
         Resolution.objects.filter(pk=resolution.pk).update(
             review_status=Resolution.Review.PENDING, reviewed_by=None, reviewed_at=None, human_note=""
         )
         raise
 
-    Ticket.objects.filter(pk=resolution.ticket_id).update(status=Ticket.Status.ESCALATED, updated_at=timezone.now())
+    with transaction.atomic():
+        Resolution.objects.filter(pk=resolution.pk).update(case_file_hash=result.case_file_hash)
+        Ticket.objects.filter(pk=resolution.ticket_id).update(status=Ticket.Status.ESCALATED, updated_at=timezone.now())
     resolution.refresh_from_db()
     return resolution
+
+
+def _case_file(resolution: Resolution, *, decision: str, note: str) -> bytes:
+    """The decision record for Meko's artifact store: agent steps and the fix, no ticket text."""
+    steps = AgentRun.objects.filter(ticket_id=resolution.ticket_id).order_by("id").values(*CASE_FILE_STEP_FIELDS)
+    return build_case_file(
+        ticket_ref=resolution.ticket.external_id,
+        decision=decision,
+        fix={
+            "source": resolution.source,
+            "category": resolution.category,
+            "problem_signature": resolution.problem_signature,
+            "fix_summary": resolution.fix_summary,
+            "fix_steps": resolution.fix_steps,
+            "confidence": resolution.confidence,
+            "resolver_agent": resolution.resolver_agent,
+            "reviewer_verdict": resolution.reviewer_verdict,
+            "reviewer_reason": resolution.reviewer_reason,
+        },
+        steps=list(steps),
+        human_note=note,
+    )

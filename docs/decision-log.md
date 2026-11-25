@@ -89,3 +89,56 @@
     - A05/A08: escaped ticket text and no tools for the model
     - A06: human approval before shared memory; conditional-update claim
     - A09: failures logged without arguments or personal data
+
+## R3: Self-learning loop and case files (week 3)
+
+- **Decision:** Close knowledge gaps with Meko's own self-learning tools, with a human in the loop.
+  - The loop: `find_gaps` → `draft_gap_articles` → a human publishes in the admin → `verify_gaps`.
+  - `find_gaps` reads `selflearning_status`, then `selflearning_shortfalls(add_context)`, then `selflearning_query_log` for each search.
+    - Shortfall rows don't name the agent, so the log entry is needed to keep only our resolvers' searches. The spike agent's searches are ignored.
+    - The log entry also names the conversation, which links each gap to its ticket.
+  - The librarian (`dejafix-librarian`, effort `low`, no tools) drafts only from human-approved resolutions plus documentation.
+    - Without an approved fix, the gap becomes `needs_author` without calling Claude.
+  - Publishing uploads a markdown document to the knowledge base.
+    - **Why a document and not a memory:** `context_search` (which Meko grades) reads knowledge-base documents but not promoted memories.
+    - The knowledge base is trusted context for every resolver, so only a human publishes.
+  - `verify_gaps` replays the search with `selflearning_verify`.
+    - The "before" values are frozen at publish time.
+    - Replays are capped at 10 per run, the same as Meko's limit per minute.
+- **Decision:** A case file (JSON) is stored as a Meko artifact (`artifact_put`) on every human decision. The shared memory links to it with a `Case file: <sha256>` line.
+  - It holds no ticket text, customer or reviewer name.
+  - It has no timestamps, so a retry produces the same bytes and Meko stores it once.
+  - The case file is written before the memory, and a failure releases the review claim.
+- **Live findings:**
+  - Gaps were imported: card_closed refund (T017), bank holiday (T013) and weekend (T001).
+    - T017 was escalated, so it has no approved fix and became `needs_author`.
+    - Two drafts were made for 4,009 tokens. Before publishing, I checked them line by line against `payouts.md` and the approved T001 fix: nothing was invented.
+  - Replays:
+    - Bank holiday: mid 0.68 → high 0.78.
+    - Weekend: mid 0.69 → high 0.87.
+    - Meko's Self-learning tab marks both searches `verified`.
+  - **Attribution caveat:** the replay grades every source. Its top 5 hits were past *conversations*, including our own trace turns, which hold the search text.
+    - Part of the jump comes from history that piled up after the first search, not from the article.
+    - So `verify_gaps` now records the replay's top source (`source_after`) and the article's own knowledge-base rank (`kb_rank_after`).
+    - Live, both articles rank #1 in the knowledge base for their search, above the original payouts doc.
+    - A KB-only `context_search` graded the weekend query `high` and the holiday query `mid`.
+  - **Bug found by the live run:** `conversation_create` returns 32 hex digits, but the search log writes the same id as a UUID with hyphens, so no gap was linked to its ticket.
+    - Fixed by normalizing both sides in the query (`Lower(Replace(...))`).
+    - Regression test: `test_links_the_ticket_when_the_log_writes_the_conversation_id_as_a_uuid`.
+- **Rejected:**
+  - `memory_add` to close gaps: `context_search` does not grade promoted memories.
+  - Publishing drafts without a human: it would poison trusted context.
+  - Trusting Meko's replay band alone: it counts our own traces (see the caveat above).
+- **Sources:**
+  - [read] Live schemas: `selflearning_status`, `_shortfalls`, `_query_log`, `_verify` (owner role, 10 replays a minute, counts against search quota), `artifact_put` / `artifact_get` (idempotent, < 1 MB inline), `knowledgebase_upload_document` ("passages come back from knowledgebase_search and context_search").
+  - [read] Live replies: status (quality 25%, `add_context` with 9 searches), shortfalls, a full query-log entry (`agent_id`, `conversation_id`, `source_outcomes`), and a verify reply (`before` / `after` / `outcome` / `top_results[].s`).
+  - [source] Django 5.2.19 installed:
+    - `CheckConstraint(condition=...)` in `db/models/constraints.py`
+    - `Replace` and `Lower` in `db/models/functions/text.py`
+    - `ModelAdmin.get_readonly_fields` and action `allowed_permissions` in `contrib/admin/options.py`
+  - [knowledge] OWASP Top 10:2025:
+    - A01: publish and dismiss are staff actions with change permission.
+    - A05: weak-search text is escaped in `<weak_search>`.
+    - A06: human gate before the knowledge base; conditional-update claims for publish and verify.
+    - A08: the presigned upload is HTTPS only.
+    - A09: no personal data in case files or logs.

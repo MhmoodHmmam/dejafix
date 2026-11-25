@@ -7,7 +7,8 @@ from django.db.models import QuerySet
 from django.http import HttpRequest
 
 from dejafix.meko import MekoError
-from support.models import AgentRun, Resolution, Ticket
+from support.gaps import dismiss_gap, publish_gap
+from support.models import AgentRun, KnowledgeGap, Resolution, Ticket
 from support.services import ReviewError, approve_resolution, reject_resolution
 
 
@@ -44,7 +45,7 @@ class ResolutionAdmin(admin.ModelAdmin):
     readonly_fields = (
         "ticket", "resolver_agent", "source", "category", "problem_signature", "fix_summary", "fix_steps",
         "customer_reply", "confidence", "reused_memory_id", "reviewer_verdict", "reviewer_reason",
-        "review_status", "reviewed_by", "reviewed_at", "promoted_memory_id", "created_at",
+        "review_status", "reviewed_by", "reviewed_at", "promoted_memory_id", "case_file_hash", "created_at",
     )
 
     def has_add_permission(self, request: HttpRequest) -> bool:
@@ -69,3 +70,54 @@ class ResolutionAdmin(admin.ModelAdmin):
                 self.message_user(request, f"{resolution.ticket.external_id}: {exc}", messages.ERROR)
             else:
                 self.message_user(request, f"{resolution.ticket.external_id}: rejected, note saved as a learning.")
+
+
+@admin.register(KnowledgeGap)
+class KnowledgeGapAdmin(admin.ModelAdmin):
+    """Review the librarian's drafts. Only the title and body are editable, and only before publishing."""
+
+    list_display = ("id", "short_query", "status", "band_before", "score_before", "band_after", "score_after", "ticket", "times_asked")
+    list_filter = ("status", "band_before")
+    list_select_related = ("ticket",)
+    search_fields = ("query", "draft_title")
+    actions = ["publish_selected", "dismiss_selected"]
+    list_per_page = 50
+    fields = (
+        "query", "status", "ticket", "agent", "reason", "band_before", "score_before", "times_asked",
+        "draft_reasoning", "draft_title", "draft_body",
+        "document_key", "published_by", "published_at", "band_after", "score_after", "source_after", "kb_rank_after",
+        "verified_at", "test_prompt_id", "log_id",
+    )
+    _always_readonly = tuple(field for field in fields if field not in ("draft_title", "draft_body"))
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def get_readonly_fields(self, request: HttpRequest, obj: KnowledgeGap | None = None) -> tuple[str, ...]:
+        if obj is not None and obj.status not in KnowledgeGap.EDITABLE_STATES:
+            return self.fields
+        return self._always_readonly
+
+    @admin.display(description="Weak search")
+    def short_query(self, gap: KnowledgeGap) -> str:
+        return gap.query[:80]
+
+    @admin.action(description="Publish to the Meko knowledge base", permissions=["change"])
+    def publish_selected(self, request: HttpRequest, queryset: QuerySet[KnowledgeGap]) -> None:
+        for gap in queryset:
+            try:
+                publish_gap(gap, user=request.user)
+            except (ReviewError, MekoError) as exc:
+                self.message_user(request, f"Gap {gap.pk}: {exc}", messages.ERROR)
+            else:
+                self.message_user(request, f"Gap {gap.pk}: published. Run verify_gaps once Meko has indexed it.")
+
+    @admin.action(description="Dismiss (no article needed)", permissions=["change"])
+    def dismiss_selected(self, request: HttpRequest, queryset: QuerySet[KnowledgeGap]) -> None:
+        for gap in queryset:
+            try:
+                dismiss_gap(gap)
+            except ReviewError as exc:
+                self.message_user(request, f"Gap {gap.pk}: {exc}", messages.ERROR)
+            else:
+                self.message_user(request, f"Gap {gap.pk}: dismissed.")
