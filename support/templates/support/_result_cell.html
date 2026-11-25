@@ -1,0 +1,6 @@
+{% load humanize %}<td>{% if not result %}<span class="muted">not run</span>
+{% elif result.error %}<span class="badge status-failed">failed</span>
+{% else %}{% if result.correct %}<span class="ok">✓ correct</span>{% elif result.escalated %}<span class="badge status-escalated">escalated</span>{% else %}<span class="bad">✗ missing {{ result.missing_keywords|join:", " }}</span>{% endif %}
+{% if result.source == "reused" %} <span class="badge reused">reused</span>{% endif %}
+{% if result.human_decision == "rejected" %} <span class="badge">corrected</span>{% endif %}
+<span class="muted">{{ result.total_tokens|intcomma }} tok</span>{% endif %}</td>

@@ -127,6 +127,11 @@ class AgentRun(models.Model):
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
+    @property
+    def step_label(self) -> str:
+        """"reuse_check" -> "Reuse check", for display."""
+        return self.step.replace("_", " ").capitalize()
+
 
 MAX_QUERY_LENGTH = 500
 MAX_ARTICLE_TITLE_LENGTH = 120

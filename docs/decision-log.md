@@ -180,3 +180,50 @@
   - [knowledge] OWASP Top 10:2025:
     - A01: benchmark admin screens are staff-only and read-only.
     - A06: injection tickets always reach a human; only trusted agents' memories steer resolvers.
+
+## R5: Staff dashboard and review pages (week 5)
+
+- **Decision:** Server-rendered Django pages, one CSS file, and bar charts drawn as SVG on the server. No JavaScript at all.
+  - Pages:
+    - dashboard;
+    - ticket list and ticket page with the full agent trace;
+    - Approve, Reject (with a note) and Run the agents;
+    - knowledge gaps: edit, publish, dismiss;
+    - benchmark.
+  - Views stay thin: forms validate, and `support.services` / `support.gaps` do the work.
+  - The Django admin stays as a fallback.
+- **Decision:** A strict Content-Security-Policy (`script-src 'none'`, `style-src 'self'`, `frame-ancestors 'none'`, `form-action 'self'`) from our own middleware.
+  - Django 5.2 has no CSP middleware: `django/middleware/` holds none.
+  - `/admin/` is exempt because it relies on inline scripts.
+- **Decision:** Status codes on the HTML actions.
+  - A state conflict (reviewed twice, publishing twice, editing a published article) renders the page with **409**.
+  - A Meko or Claude failure renders it with **502**, and the state is unchanged.
+  - Invalid input gets **400** with field errors.
+  - Success redirects (POST/Redirect/GET).
+- **Decision:** Meko's context quality on the dashboard comes from a live `selflearning_status` call.
+  - It has a 5 s timeout and is cached under one shared key: 300 s after a success, 60 s after a failure. The value is datapack-wide, not per user.
+  - A failure shows "unavailable".
+- **Access:** every page is staff-only (anonymous users go to the login page, other users get 403). Each action also needs the model's change permission. POST only, with CSRF.
+- **Performance:** the dashboard runs 7 queries, plus 2 per benchmark run shown, and the count does not grow with the data. The ticket list runs 4 queries for a page of 50.
+- **Live check** (local server, built-in browser, real Claude and Meko):
+  - I logged in as a local test staff user. Its random password is in the git-ignored `var/demo-login.txt`.
+  - The dashboard showed Meko context quality at 27%.
+  - Run the agents on T002 took 5,779 tokens and 17.4 s of model time; the ticket is now awaiting review. It was not approved, so nothing was promoted.
+  - At 375 px wide nothing overflows horizontally, and the console showed no CSP violations.
+  - Fix from that check: step names such as `reuse_check` now display as "Reuse check".
+- **Rejected:**
+  - React or HTMX plus a chart library: new dependencies for pages that don't need client code.
+  - Running the agents in a background queue (Celery or RQ): a new dependency. For a local demo a synchronous request is enough, and the README says so.
+- **Sources:**
+  - [source] Django 5.2.19 installed:
+    - `contrib/auth/decorators.py`: `login_required`, `permission_required(raise_exception=)`
+    - `views/decorators/http.py`: `require_POST`, `require_GET`
+    - `core/paginator.py`: `Paginator.page`, which raises `EmptyPage` / `PageNotAnInteger`
+    - `contrib/auth/views.py`: `LoginView`; `LogoutView` accepts only POST
+    - no CSP module in `django/middleware/`
+  - [knowledge] MDN, Content-Security-Policy directives.
+  - [knowledge] OWASP Top 10:2025:
+    - A01: staff-only pages and per-action permissions
+    - A02: strict CSP; `DEBUG` off
+    - A05: templates auto-escape customer text, checked by a test with `<script>`
+    - A08: CSRF on every POST; forms list their fields explicitly

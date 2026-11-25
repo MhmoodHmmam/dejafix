@@ -1,0 +1,14 @@
+{% extends "support/base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Support staff log in</h1>
+  <form method="post" action="{% url 'login' %}">{% csrf_token %}
+    {% if form.errors %}<p class="error">Your username and password didn't match.</p>{% endif %}
+    <label for="id_username">Username</label>{{ form.username }}
+    <label for="id_password">Password</label>{{ form.password }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="primary">Log in</button>
+  </form>
+</section>
+{% endblock %}

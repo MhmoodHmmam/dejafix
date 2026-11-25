@@ -1,0 +1,59 @@
+{% extends "support/base.html" %}
+{% load humanize %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Shared memory at work</h1>
+<p class="lead">Every ticket searches Meko's shared memory before anything is solved. Fixes a human approved are reused by every agent; corrections become learnings.</p>
+
+<section class="kpis" aria-label="Key numbers">
+  <article class="kpi">
+    <h2>Resolved tickets</h2>
+    <p class="value">{{ tickets.resolved }}<small> / {{ tickets.total }}</small></p>
+    <p class="note">{{ tickets.by_status.awaiting_review|default:0 }} awaiting review · {{ tickets.by_status.escalated|default:0 }} escalated</p>
+  </article>
+  <article class="kpi accent">
+    <h2>Reused an approved fix</h2>
+    <p class="value">{{ tickets.reused }}<small> ({% widthratio tickets.reuse_rate 1 100 %}%)</small></p>
+    <p class="note">no human needed for these</p>
+  </article>
+  <article class="kpi">
+    <h2>Tokens saved by reuse</h2>
+    <p class="value">{{ tickets.tokens_saved|intcomma }}</p>
+    <p class="note">{{ tickets.avg_tokens_reused|floatformat:0|intcomma }} per reused ticket vs {{ tickets.avg_tokens_new|floatformat:0|intcomma }} solved fresh</p>
+  </article>
+  <article class="kpi">
+    <h2>Meko context quality</h2>
+    {% if quality.available %}
+    <p class="value">{{ quality.pct }}%</p>
+    <p class="note">of {{ quality.searches }} recent searches found a strong match{% if quality.open_fixes %} · open: {{ quality.open_fixes|join:", " }}{% endif %}</p>
+    {% else %}
+    <p class="value muted">unavailable</p>
+    <p class="note">Meko's self-learning status could not be read just now.</p>
+    {% endif %}
+  </article>
+  <article class="kpi">
+    <h2>Knowledge gaps</h2>
+    <p class="value">{{ gaps.closed_by_article }}<small> closed</small></p>
+    <p class="note"><a href="{% url 'support:gap_list' %}">{{ gaps.awaiting_review }} awaiting a human</a></p>
+  </article>
+</section>
+
+{% if benchmark %}
+<section class="card">
+  <header class="card-head">
+    <h2>Benchmark: same agents, with and without shared memory</h2>
+    <a href="{% url 'support:benchmark' %}">Full results</a>
+  </header>
+  {% include "support/_bars.html" with bars=benchmark.bars docs=benchmark.docs meko=benchmark.meko %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Tickets by status</h2>
+  <ul class="status-list">
+    {% for value, label, count in status_rows %}
+    <li><a href="{% url 'support:ticket_list' %}?status={{ value }}"><span class="badge status-{{ value }}">{{ label }}</span></a> <strong>{{ count }}</strong></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

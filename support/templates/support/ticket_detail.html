@@ -1,0 +1,92 @@
+{% extends "support/base.html" %}
+{% load humanize %}
+{% block title %}{{ ticket.external_id }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{% url 'support:ticket_list' %}">Tickets</a> / {{ ticket.external_id }}</p>
+<header class="page-head">
+  <h1 dir="auto">{{ ticket.external_id }} · {{ ticket.subject }}</h1>
+  <span class="badge status-{{ ticket.status }}">{{ ticket.get_status_display }}</span>
+</header>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<div class="columns">
+  <section class="card">
+    <h2>Customer message</h2>
+    <p class="muted">{{ ticket.customer }}</p>
+    <div class="ticket-body" dir="auto">{{ ticket.body|linebreaksbr }}</div>
+    {% if ticket.failure_reason %}<p class="error">Last run failed: {{ ticket.failure_reason }}</p>{% endif %}
+    {% if can_resolve and ticket.is_resolvable %}
+    <form method="post" action="{% url 'support:ticket_resolve' ticket.external_id %}">{% csrf_token %}
+      <button type="submit" class="primary">Run the agents</button>
+      <span class="muted">Calls Claude and Meko; takes about 15 to 30 seconds.</span>
+    </form>
+    {% endif %}
+  </section>
+
+  {% if resolution %}
+  <section class="card">
+    <header class="card-head">
+      <h2>Proposed fix</h2>
+      {% if resolution.source == "reused" %}<span class="badge reused">Reused an approved fix</span>{% else %}<span class="badge">Solved from documentation</span>{% endif %}
+    </header>
+    <p class="fix">{{ resolution.fix_summary }}</p>
+    <ol class="steps">{% for step in resolution.fix_steps %}<li>{{ step }}</li>{% endfor %}</ol>
+    <h3>Reply to the customer</h3>
+    <div class="reply" dir="auto">{{ resolution.customer_reply|linebreaksbr }}</div>
+    <dl class="facts">
+      <dt>Resolver</dt><dd>{{ resolution.resolver_agent }}</dd>
+      <dt>Confidence</dt><dd>{{ resolution.confidence|floatformat:2 }}</dd>
+      <dt>Reviewer agent</dt><dd>{{ resolution.reviewer_verdict }}{% if resolution.reviewer_reason %}: {{ resolution.reviewer_reason }}{% endif %}</dd>
+      {% if resolution.reused_memory_id %}<dt>Shared memory used</dt><dd><code>{{ resolution.reused_memory_id }}</code></dd>{% endif %}
+      {% if resolution.promoted_memory_id %}<dt>Promoted to shared memory</dt><dd><code>{{ resolution.promoted_memory_id }}</code></dd>{% endif %}
+      {% if resolution.case_file_hash %}<dt>Case file (Meko artifact)</dt><dd><code>{{ resolution.case_file_hash }}</code></dd>{% endif %}
+      <dt>Human review</dt><dd>{{ resolution.get_review_status_display }}{% if resolution.reviewed_by %} by {{ resolution.reviewed_by.get_username }}{% endif %}{% if resolution.human_note %}: “{{ resolution.human_note }}”{% endif %}</dd>
+    </dl>
+
+    {% if can_review and resolution.source == "new" and resolution.review_status == "pending" %}
+    <div class="review">
+      <form method="post" action="{% url 'support:resolution_approve' ticket.external_id %}">{% csrf_token %}
+        <label for="approve-note">Optional note</label>
+        <textarea id="approve-note" name="note" rows="2" maxlength="2000"></textarea>
+        <button type="submit" class="primary">Approve and share with every agent</button>
+      </form>
+      <form method="post" action="{% url 'support:resolution_reject' ticket.external_id %}">{% csrf_token %}
+        <label for="{{ reject_form.note.id_for_label }}">What was wrong?</label>
+        {{ reject_form.note }}
+        {% for message in reject_form.note.errors %}<p class="error">{{ message }}</p>{% endfor %}
+        <p class="muted">{{ reject_form.note.help_text }}</p>
+        <button type="submit" class="danger">Reject with this note</button>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+{% if runs %}
+<section class="card">
+  <h2>Why: every step the agents took</h2>
+  <ol class="timeline">
+    {% for run in runs %}
+    <li>
+      <header><strong>{{ run.step_label }}</strong> <span class="agent">{{ run.agent }}</span>
+        <span class="metrics">{% if run.total_tokens %}{{ run.total_tokens|intcomma }} tokens · {{ run.latency_ms|intcomma }} ms · {% endif %}{{ run.meko_calls }} Meko call{{ run.meko_calls|pluralize }}</span></header>
+      <p>{{ run.reasoning }}</p>
+      <details><summary>Decision</summary>
+        <dl class="decision">{% for key, value in run.decision.items %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+      </details>
+      {% if run.meko_conversation_id %}<p class="muted">Meko conversation <code>{{ run.meko_conversation_id }}</code></p>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+{% if gaps %}
+<section class="card">
+  <h2>Knowledge gaps found from this ticket</h2>
+  <ul>{% for gap in gaps %}<li><a href="{% url 'support:gap_detail' gap.pk %}">{{ gap.query }}</a> <span class="badge gap-{{ gap.status }}">{{ gap.get_status_display }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

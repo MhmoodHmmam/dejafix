@@ -1,0 +1,61 @@
+{% extends "support/base.html" %}
+{% block title %}Knowledge gap {{ gap.pk }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{% url 'support:gap_list' %}">Knowledge gaps</a> / {{ gap.pk }}</p>
+<header class="page-head">
+  <h1>{{ gap.query }}</h1>
+  <span class="badge gap-{{ gap.status }}">{{ gap.get_status_display }}</span>
+</header>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<div class="columns">
+  <section class="card">
+    <h2>Measured by Meko</h2>
+    <dl class="facts">
+      <dt>Before</dt><dd><span class="band band-{{ gap.band_before }}">{{ gap.band_before }}</span> {{ gap.score_before|floatformat:2 }} ({{ gap.reason|default:"weak" }}, asked {{ gap.times_asked }}×)</dd>
+      <dt>After</dt><dd>{% if gap.band_after %}<span class="band band-{{ gap.band_after }}">{{ gap.band_after }}</span> {{ gap.score_after|floatformat:2 }}{% else %}not replayed yet{% endif %}</dd>
+      {% if gap.band_after %}
+      <dt>Top match after</dt><dd>{{ gap.source_after|default:"unknown" }}</dd>
+      <dt>Article's knowledge-base rank</dt><dd>{% if gap.kb_rank_after %}#{{ gap.kb_rank_after }}{% else %}not in the top results{% endif %}</dd>
+      {% endif %}
+      <dt>Ticket</dt><dd>{% if gap.ticket %}<a href="{% url 'support:ticket_detail' gap.ticket.external_id %}">{{ gap.ticket.external_id }}</a>{% else %}—{% endif %}</dd>
+      <dt>Searched by</dt><dd>{{ gap.agent }}</dd>
+      {% if gap.document_key %}<dt>Published</dt><dd>{{ gap.published_at|date:"Y-m-d H:i" }}{% if gap.published_by %} by {{ gap.published_by.get_username }}{% endif %}</dd>{% endif %}
+    </dl>
+    {% if gap.source_after == "conversation" %}
+    <p class="muted">Meko's replay grades past conversations too (our own traces among them), so the band alone doesn't prove the article helped. The knowledge-base rank does.</p>
+    {% endif %}
+    {% if gap.draft_reasoning %}<h3>Librarian</h3><p>{{ gap.draft_reasoning }}</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Article</h2>
+    {% if editable and can_edit %}
+    <form method="post" action="{% url 'support:gap_save' gap.pk %}">{% csrf_token %}
+      {{ form.non_field_errors }}
+      <label for="{{ form.draft_title.id_for_label }}">Title</label>{{ form.draft_title }}
+      {% for message in form.draft_title.errors %}<p class="error">{{ message }}</p>{% endfor %}
+      <label for="{{ form.draft_body.id_for_label }}">Body (Markdown)</label>{{ form.draft_body }}
+      {% for message in form.draft_body.errors %}<p class="error">{{ message }}</p>{% endfor %}
+      <button type="submit">Save draft</button>
+    </form>
+    <div class="actions">
+      {% if publishable %}
+      <form method="post" action="{% url 'support:gap_publish' gap.pk %}">{% csrf_token %}
+        <button type="submit" class="primary">Publish to the Meko knowledge base</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{% url 'support:gap_dismiss' gap.pk %}">{% csrf_token %}
+        <button type="submit" class="danger">Dismiss</button>
+      </form>
+    </div>
+    <p class="muted">Every resolver reads the knowledge base as trusted documentation, so only publish what you would sign.</p>
+    {% elif gap.draft_body %}
+    <h3>{{ gap.draft_title }}</h3>
+    <pre class="article">{{ gap.draft_body }}</pre>
+    {% else %}
+    <p class="muted">No article.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

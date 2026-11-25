@@ -1,0 +1,29 @@
+{% extends "support/base.html" %}
+{% block title %}Knowledge gaps{% endblock %}
+{% block content %}
+<h1>Knowledge gaps</h1>
+<p class="lead">Searches Meko graded as weak (its self-learning log). The librarian drafts an article from human-approved fixes; a person publishes it; a replay measures the search again.</p>
+<nav class="filters" aria-label="Filter by status">
+  <a href="{% url 'support:gap_list' %}"{% if not status %} aria-current="page"{% endif %}>All</a>
+  {% for value, label in statuses %}<a href="?status={{ value }}"{% if status == value %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Weak search</th><th>Ticket</th><th>Status</th><th>Before</th><th>After</th></tr></thead>
+  <tbody>
+  {% for gap in page.object_list %}
+    <tr>
+      <td><a href="{% url 'support:gap_detail' gap.pk %}">{{ gap.query|truncatechars:90 }}</a></td>
+      <td>{% if gap.ticket %}<a href="{% url 'support:ticket_detail' gap.ticket.external_id %}">{{ gap.ticket.external_id }}</a>{% else %}—{% endif %}</td>
+      <td><span class="badge gap-{{ gap.status }}">{{ gap.get_status_display }}</span></td>
+      <td><span class="band band-{{ gap.band_before }}">{{ gap.band_before }}</span> {{ gap.score_before|floatformat:2 }}</td>
+      <td>{% if gap.band_after %}<span class="band band-{{ gap.band_after }}">{{ gap.band_after }}</span> {{ gap.score_after|floatformat:2 }}{% else %}—{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="5" class="muted">No gaps yet. Import them with <code>manage.py find_gaps</code>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% include "support/_pager.html" %}
+{% endblock %}

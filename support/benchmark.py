@@ -351,6 +351,11 @@ def summarize(run: BenchmarkRun, total: int) -> ArmSummary:
     )
 
 
+def summaries_for(runs: Sequence[BenchmarkRun]) -> list[ArmSummary]:
+    total = len(ground_truth().tickets)
+    return [summarize(run, total) for run in runs]
+
+
 def calibration_for(run: BenchmarkRun):
     observations = [
         CandidateScores(result.best_same_issue_score, result.best_other_issue_score)
