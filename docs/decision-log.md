@@ -36,3 +36,56 @@
   - [read] pip index: Django 5.2.19 is the latest 5.2 LTS patch
   - [knowledge] Django 5.2 supports Python 3.14 from 5.2.8. Verified in practice: the suite runs on 3.14.5.
   - [knowledge] OWASP Top 10:2025 A02 (misconfiguration), A04 (keys over TLS only), A09 (no secrets or arguments in logs)
+
+## R2: Support agents, synthetic data and human review (week 2)
+
+- **Decision:** A code-driven workflow (triage → retrieve → resolve → review), not a free agent.
+  - Each agent is one Claude call with a Pydantic-typed output and **no tools**, so ticket text has nothing to act on.
+  - Code runs the Meko calls in a fixed order, so "search before solving" can't be skipped.
+  - The fixed order also keeps the benchmark repeatable.
+- **Decision:** One Meko conversation per (ticket, agent).
+  - Why: live schema says "Conversations are scoped per agent" and `conversation_add_message` needs the same `agent_id`.
+  - All of a ticket's conversations share `run_id = dejafix:<ticket>`.
+  - A fixed `session_id` and message `seed` make re-runs reconnect instead of duplicating.
+- **Decision:** Retrieval uses `context_search` plus `knowledgebase_search`.
+  - **Why:** live spike: a promoted memory disappears from memory search and comes back from `knowledgebase_search` (rerank 0.97 on a paraphrase). `context_search` did not return it, even with `force_source="knowledge_base"`.
+- **Decision:** Only fixes promoted by the curator agent, in our exact text format, are trusted for reuse.
+  - Corrections count only in their exact format.
+  - **Why:**
+    - Promotion is one-way: a test chunk from the spike could not be deleted.
+    - Meko Cloud **auto-extracts memories from every conversation turn** under our agents' ids. A live run created 20 such memories, including unreviewed fixes. None contained the injection text.
+- **Decision:** Memory is written only after a human decides.
+  - Approval: the curator stores the fix and promotes it (collective memory).
+  - Rejection: the reviewer's note is stored as a private learning, which resolvers see next time.
+  - Approve/reject claim the row with a conditional `UPDATE` (no double promotion). The claim is released if Meko fails.
+- **Decision:** Effort `low` for triage, reuse check and review; `medium` for solving. Server-side refusal fallback (`fallbacks="default"`) is on.
+- **Live check (5 tickets + 1 approval, real Claude Opus 5.5 and Meko Cloud):**
+  - T001 (new): 5,291 tokens, 13.1 s of model time.
+  - Repeats T013, T025, T033 reused the approved fix:
+    - 2,667 to 2,782 tokens each, about 49% fewer than T001.
+    - 8.6 to 9.8 s of model time.
+  - Cross-agent: T025 was handled by resolver-b. Cross-language: T033 is in Arabic.
+  - Reuse scores were 0.994 to 1.0.
+  - T013's reply adapted the approved fix to a bank holiday.
+  - T017 (prompt injection) was escalated by the code rule; no memory was written.
+- **Bug found by the live run:** the reviewer escalated a correct fix because it saw only policy passages, not the documentation the resolver used.
+  - Fixed: the reviewer now gets the resolver's evidence.
+  - Regression test: `test_reviewer_sees_the_documentation_the_resolver_relied_on`.
+- **Rejected:**
+  - Managed Agents / a tool-using agent: harder to enforce ordering and to benchmark, and a larger injection surface.
+  - Trusting `context_search` alone: it misses promoted fixes.
+  - Writing memory on every resolution: unreviewed fixes would be reused.
+- **Sources:**
+  - [read] Live Meko Cloud schemas (`docs/meko-tools.json`): "Conversations are scoped per agent"; `memory_search` is cross-agent; `memory_promote` is "one-way"; the `context_search` memory floor note; the `knowledgebase_upload_document` presigned upload flow.
+  - [read] Live spike replies (conversation, message, token usage, memory add/search/promote, context and KB search) and `memory_get_all` after the live run.
+  - [source] `anthropic` 2.14 installed:
+    - `beta.messages.parse(..., fallbacks=, betas=, output_format=, output_config=)`
+    - `merge_output_config`
+    - `ParsedBetaMessage.parsed_output`
+    - the exception classes in `_exceptions.py`
+  - [read] claude-api skill: Opus 5.5 effort default `medium`, thinking always on, refusal fallbacks.
+  - [knowledge] OWASP Top 10:2025:
+    - A01: staff-only admin actions
+    - A05/A08: escaped ticket text and no tools for the model
+    - A06: human approval before shared memory; conditional-update claim
+    - A09: failures logged without arguments or personal data

@@ -136,6 +136,8 @@ MEKO_DATAPACK_ID = env_str("MEKO_DATAPACK_ID")
 # Claude (agent reasoning)
 ANTHROPIC_API_KEY = env_str("CLAUDE_API_KEY") or env_str("ANTHROPIC_API_KEY")
 DEJAFIX_MODEL = env_str("DEJAFIX_MODEL", "claude-opus-5-5")
+# Only promoted fixes written by this agent are trusted as approved fixes.
+DEJAFIX_CURATOR_AGENT = env_str("DEJAFIX_CURATOR_AGENT", "dejafix-curator")
 
 LOGGING = {
     "version": 1,
