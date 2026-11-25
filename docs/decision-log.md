@@ -142,3 +142,41 @@
     - A06: human gate before the knowledge base; conditional-update claims for publish and verify.
     - A08: the presigned upload is HTTPS only.
     - A09: no personal data in case files or logs.
+
+## R4: Benchmark with and without shared memory (week 4)
+
+- **Decision:** Two arms over all 36 tickets, in ticket order, with the same agents, prompts, effort and documentation.
+  - Each arm runs in its own new datapack, created with `datapack_create` and seeded with the same 9 docs.
+  - The only difference is memory. The docs-only arm runs the same Meko searches but keeps only documentation passages.
+  - Each run trusts only its own curator and reviewer identities. Ticket refs are prefixed with the run name, so traces never collide.
+- **Decision:** Deterministic grading against ground-truth keywords per issue (`data/tickets.json`), not an LLM judge.
+  - A fix is correct only if it mentions every keyword and was not escalated.
+  - The two injection tickets are flagged in the ground truth and must be escalated with nothing stored.
+  - The rules were fixed before the run and not changed after seeing results, even where they are strict (T003: "use a live key" without the `lp_live_` prefix counts as wrong).
+- **Decision:** A simulated reviewer in the Meko arm decides each new fix right away.
+  - It approves complete fixes. It rejects incomplete ones with a note naming the missing keywords.
+  - Its notes come from the ground truth, so it is kinder than a busy human. The report says so.
+- **Results** (one run per arm, `claude-opus-5-5`; full table in `docs/benchmark.md`):
+  - Correct: docs-only 25/36, Meko 30/36. First occurrences 8/12 in both; repeats 17/24 vs 22/24.
+  - Tokens on repeats: 5,348 vs 3,537 on average (-34%). Total: 192,558 vs 148,998 tokens ($1.43 vs $1.11 at list price).
+  - Human touches: 36/36 vs 19/36 (17 repeats reused an approved fix).
+  - False reuse 0. Both injection tickets escalated with nothing stored, in both arms.
+  - Learning from corrections: T002, T003 and T010 were rejected with notes, and their repeats T014, T015 and T023 were correct in the Meko arm but wrong in the docs-only arm.
+  - The reuse check works as a gate: T036 was offered T012's fix at score 1.0, judged a different cause, and solved correctly from the docs.
+- **Calibration:** every threshold from 0.50 to 0.90 gave precision 1.00 and recall 1.00. No other issue's fix was ever offered, so the data cannot test how low the threshold can safely go. `REUSE_MIN_RERANK_SCORE` stays at 0.80.
+  - The first report said "Recommended: 0.5". That falsely precise value was replaced by the tied range, with an explicit caveat.
+- **Bugs found while building the benchmark:**
+  - **Security:** an injection ticket matching an approved fix took the reuse path, which skips review, so the "instructions in the ticket → escalate" rule never ran and the ticket closed with a model-written reply. Fixed: injection tickets never take the reuse path. Regression test: `test_injection_ticket_is_escalated_even_when_an_approved_fix_matches`.
+  - **Security:** human corrections were trusted by their text format alone, from any agent (memory search spans every agent). Fixed: only the reviewer agent's corrections count; live `context_search` memory hits carry `agent_id`. Regression test: `test_correction_written_by_an_untrusted_agent_is_ignored`.
+- **Limits:** one run per arm (no repeated runs, so no confidence intervals); 36 synthetic tickets; a lenient simulated reviewer.
+- **Rejected:**
+  - Running both arms in the demo datapack: it already holds a promoted fix and two articles, and `knowledgebase_search` keeps only the top 8 hits.
+  - An LLM judge: costlier, and harder to repeat than keyword grading.
+- **Sources:**
+  - [read] Claude API skill, model table (cached 2026-11-03): `claude-opus-5-5` at $4 / $20 per million input / output tokens.
+  - [read] Live schemas: `datapack_create` (`name` must be unique across the platform; `datapack_id` is for trace routing only), `datapack_delete` (irreversible, not used).
+  - [read] A live `context_search` memory hit: keys include `agent_id`, `score` and `memory`.
+  - [source] Django 5.2.19: `UniqueConstraint(fields=..., name=...)` and `CheckConstraint(condition=...)` in `db/models/constraints.py`.
+  - [knowledge] OWASP Top 10:2025:
+    - A01: benchmark admin screens are staff-only and read-only.
+    - A06: injection tickets always reach a human; only trusted agents' memories steer resolvers.

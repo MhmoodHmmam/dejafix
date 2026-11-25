@@ -4,11 +4,12 @@ Meko issues a presigned URL per file (`knowledgebase_upload_document`); the byte
 there as multipart, fields first and the file last. Files Meko already has (same SHA-256)
 are skipped, so re-running is safe.
 
-Usage: `python manage.py seed_knowledge [--dir data/kb] [--wait]`
+Usage: `python manage.py seed_knowledge [--dir data/kb] [--wait] [--datapack <uuid>]`
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("--dir", type=Path, default=DEFAULT_DIR)
         parser.add_argument("--wait", action="store_true", help="Poll until Meko has indexed every new file.")
+        parser.add_argument("--datapack", default="", help="Upload into this datapack instead of MEKO_DATAPACK_ID.")
 
     def handle(self, *args: Any, **options: Any) -> None:
         folder: Path = options["dir"]
@@ -53,6 +55,8 @@ class Command(BaseCommand):
             raise CommandError(f"No .md or .txt files in {folder}")
         try:
             config = MekoConfig.from_settings()
+            if options["datapack"]:
+                config = replace(config, datapack_id=options["datapack"])  # re-validated as a UUID
             if not config.datapack_id:
                 raise CommandError("MEKO_DATAPACK_ID is not set.")
             anyio.run(self._seed, config, files, options["wait"])

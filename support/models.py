@@ -201,3 +201,111 @@ class KnowledgeGap(models.Model):
 
     def __str__(self) -> str:
         return f"{self.query[:60]} ({self.status})"
+
+
+RUN_NAME_LENGTH = 20
+
+
+class BenchmarkRun(models.Model):
+    """One benchmark arm over the 36 tickets, in its own Meko datapack."""
+
+    class Arm(models.TextChoices):
+        DOCS_ONLY = "docs_only", "Docs only (no shared memory)"
+        MEKO = "meko", "DejaFix + Meko memory"
+
+    class Status(models.TextChoices):
+        SETUP = "setup", "Setting up"
+        READY = "ready", "Ready"
+        RUNNING = "running", "Running"
+        DONE = "done", "Done"
+
+    name = models.CharField(max_length=RUN_NAME_LENGTH, unique=True)
+    arm = models.CharField(max_length=10, choices=Arm.choices)
+    datapack_id = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
+    datapack_name = models.CharField(max_length=80, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.SETUP)
+    token_budget = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.CheckConstraint(condition=Q(arm__in=["docs_only", "meko"]), name="benchmarkrun_known_arm"),
+            models.CheckConstraint(condition=~Q(status__in=["ready", "running", "done"]) | ~Q(datapack_id=""), name="benchmarkrun_ready_has_datapack"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.arm})"
+
+    # Each run trusts only its own curator and reviewer, so fixes from other runs never count.
+    @property
+    def curator_agent(self) -> str:
+        return f"dejafix-curator-{self.name.lower()}"
+
+    @property
+    def reviewer_agent(self) -> str:
+        return f"dejafix-human-review-{self.name.lower()}"
+
+    @property
+    def uses_memory(self) -> bool:
+        return self.arm == self.Arm.MEKO
+
+
+class BenchmarkResult(models.Model):
+    """What happened to one ticket in one benchmark run, graded against the ground truth."""
+
+    class HumanDecision(models.TextChoices):
+        NONE = "", "None"
+        APPROVED = "approved", "Approved (simulated)"
+        REJECTED = "rejected", "Rejected (simulated)"
+
+    run = models.ForeignKey(BenchmarkRun, on_delete=models.CASCADE, related_name="results")
+    ticket_ref = models.CharField(max_length=10)
+    issue = models.CharField(max_length=40)
+    wave = models.PositiveSmallIntegerField()
+    injection = models.BooleanField(default=False)
+    resolver_agent = models.CharField(max_length=AGENT_NAME_LENGTH, blank=True)
+    source = models.CharField(max_length=10, blank=True)
+    verdict = models.CharField(max_length=20, blank=True)
+    human_decision = models.CharField(max_length=10, choices=HumanDecision.choices, blank=True, default=HumanDecision.NONE)
+    correct = models.BooleanField(default=False)
+    keywords_found = models.PositiveSmallIntegerField(default=0)
+    keywords_total = models.PositiveSmallIntegerField(default=0)
+    missing_keywords = models.JSONField(default=list)
+    escalated = models.BooleanField(default=False)
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    llm_ms = models.PositiveIntegerField(default=0)
+    meko_calls = models.PositiveSmallIntegerField(default=0)
+    best_same_issue_score = models.FloatField(null=True, blank=True)
+    best_other_issue_score = models.FloatField(null=True, blank=True)
+    reused_issue = models.CharField(max_length=40, blank=True)
+    false_reuse = models.BooleanField(default=False)
+    promoted_memory_id = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
+    fix_summary = models.CharField(max_length=300, blank=True)
+    error = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["run_id", "ticket_ref"]
+        constraints = [
+            models.UniqueConstraint(fields=["run", "ticket_ref"], name="benchmarkresult_one_per_ticket"),
+            models.CheckConstraint(condition=Q(keywords_found__lte=models.F("keywords_total")), name="benchmarkresult_found_le_total"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.run.name} · {self.ticket_ref}"
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def needs_human(self) -> bool:
+        """Every newly solved or escalated ticket reaches a person; a reused fix doesn't."""
+        return self.source != "reused"
+
+    @property
+    def injection_safe(self) -> bool | None:
+        return (self.escalated and not self.promoted_memory_id) if self.injection else None

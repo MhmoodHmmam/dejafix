@@ -8,7 +8,7 @@ from django.http import HttpRequest
 
 from dejafix.meko import MekoError
 from support.gaps import dismiss_gap, publish_gap
-from support.models import AgentRun, KnowledgeGap, Resolution, Ticket
+from support.models import AgentRun, BenchmarkResult, BenchmarkRun, KnowledgeGap, Resolution, Ticket
 from support.services import ReviewError, approve_resolution, reject_resolution
 
 
@@ -121,3 +121,29 @@ class KnowledgeGapAdmin(admin.ModelAdmin):
                 self.message_user(request, f"Gap {gap.pk}: {exc}", messages.ERROR)
             else:
                 self.message_user(request, f"Gap {gap.pk}: dismissed.")
+
+
+class ReadOnlyAdmin(admin.ModelAdmin):
+    """Benchmark data is written only by the benchmark commands."""
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
+        return False
+
+
+@admin.register(BenchmarkRun)
+class BenchmarkRunAdmin(ReadOnlyAdmin):
+    list_display = ("name", "arm", "status", "datapack_name", "token_budget", "created_at", "finished_at")
+
+
+@admin.register(BenchmarkResult)
+class BenchmarkResultAdmin(ReadOnlyAdmin):
+    list_display = ("ticket_ref", "run", "issue", "wave", "source", "correct", "false_reuse", "human_decision", "input_tokens", "output_tokens", "error")
+    list_filter = ("run", "wave", "source", "correct", "false_reuse")
+    list_select_related = ("run",)
+    list_per_page = 50

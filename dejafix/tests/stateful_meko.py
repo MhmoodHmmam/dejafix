@@ -88,6 +88,7 @@ class MekoWorld:
     artifacts: dict[str, dict[str, Any]] = field(default_factory=dict)
     indexing_keys: set[str] = field(default_factory=set)
     verify_calls: list[dict[str, str]] = field(default_factory=list)
+    datapacks: dict[str, str] = field(default_factory=dict)
     replay_top_source: str | None = None  # what Meko's replay ranked first (live: often "conversation")
     fail_tool: str | None = None
     fail_code: str = "internal_error"
@@ -371,6 +372,16 @@ def build_stateful_meko(docs: list[str] | None = None) -> tuple[MCPServer, MekoW
              "nothing_added_since_last_run": False, "indexing": False,
              "top_results": [{"s": top_source, "score": best, "kind": "document"}]}
         )
+
+    @server.tool()
+    def datapack_create(
+        name: str, conversation_id: str = "", datapack_id: str | None = None, folder_id: str | None = None
+    ) -> str:
+        if failure := log("datapack_create"):
+            return failure
+        new_id = str(uuid.uuid4())
+        world.datapacks[new_id] = name
+        return json.dumps({"datapack_id": new_id, "name": name})
 
     @server.tool()
     def artifact_put(

@@ -79,8 +79,20 @@ def _score(hit: Mapping[str, Any], key: str) -> float:
     return float(value) if isinstance(value, (int, float)) else 0.0
 
 
-async def retrieve(meko: MekoGateway, *, signature: str, subject: str, trusted_curator: str) -> Retrieval:
-    """Search Meko before solving. `meko` must be scoped to the resolver's conversation."""
+async def retrieve(
+    meko: MekoGateway,
+    *,
+    signature: str,
+    subject: str,
+    trusted_curator: str,
+    trusted_reviewer: str,
+    use_memory: bool = True,
+) -> Retrieval:
+    """Search Meko before solving. `meko` must be scoped to the resolver's conversation.
+
+    With `use_memory=False` (the benchmark's docs-only arm) the same searches run, but only
+    documentation is kept: no approved fixes and no human corrections.
+    """
     retrieval = Retrieval()
 
     context = await meko.call("context_search", query=signature, prompt=subject, limit=CONTEXT_SEARCH_LIMIT)
@@ -90,10 +102,15 @@ async def retrieve(meko: MekoGateway, *, signature: str, subject: str, trusted_c
         savings = context.get("token_savings")
         if isinstance(savings, Mapping):
             retrieval.tokens_saved = int(_score(savings, "tokens_saved"))
-        for hit in _dicts(results.get("memory")):
+        for hit in _dicts(results.get("memory")) if use_memory else ():
             text = _text_of(hit)
-            # Exact format only: Meko also auto-extracts lookalike memories from conversation turns.
-            if is_correction_memory(text) and _score(hit, "score") >= LEARNING_MIN_SCORE:
+            # Exact format only (Meko also auto-extracts lookalike memories from conversation
+            # turns), and only from the reviewer agent: memory search spans every agent.
+            if (
+                hit.get("agent_id") == trusted_reviewer
+                and is_correction_memory(text)
+                and _score(hit, "score") >= LEARNING_MIN_SCORE
+            ):
                 retrieval.learnings.append(text)
         for hit in _dicts(results.get("knowledge_base")):
             if text := _text_of(hit):
@@ -105,7 +122,7 @@ async def retrieve(meko: MekoGateway, *, signature: str, subject: str, trusted_c
         text = _text_of(hit)
         filters = hit.get("metadata_filters") if isinstance(hit.get("metadata_filters"), Mapping) else {}
         if filters.get("source") == PROMOTED_SOURCE:
-            if filters.get("agent_id") == trusted_curator and parse_fix_memory(text) is not None:
+            if use_memory and filters.get("agent_id") == trusted_curator and parse_fix_memory(text) is not None:
                 memory_id = str(filters.get("memory_id") or hit.get("id") or "")
                 if memory_id:
                     retrieval.approved_fixes.append(ApprovedFix(memory_id, text, _score(hit, "rerank_score")))

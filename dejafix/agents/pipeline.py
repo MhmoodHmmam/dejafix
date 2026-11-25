@@ -96,6 +96,8 @@ async def run_pipeline(
     resolver: str,
     trusted_curator: str,
     calls: Sequence[MekoCallRecord],
+    trusted_reviewer: str = HUMAN_REVIEW_AGENT,
+    use_memory: bool = True,
 ) -> PipelineOutcome:
     if resolver not in RESOLVER_AGENTS:
         raise ValueError(f"resolver must be one of {sorted(RESOLVER_AGENTS)}")
@@ -127,7 +129,12 @@ async def run_pipeline(
     resolver_trace = AgentTrace(meko, agent=resolver_agent, ticket_ref=ticket.ref)
     resolver_meko = await resolver_trace.open()
     retrieval = await retrieve(
-        resolver_meko, signature=triage.problem_signature, subject=ticket.subject, trusted_curator=trusted_curator
+        resolver_meko,
+        signature=triage.problem_signature,
+        subject=ticket.subject,
+        trusted_curator=trusted_curator,
+        trusted_reviewer=trusted_reviewer,
+        use_memory=use_memory,
     )
     retrieve_reason = _retrieval_reason(retrieval)
     await resolver_trace.record(
@@ -161,7 +168,9 @@ async def _resolve(
     steps: list[StepRecord],
     meter: _StepMeter,
 ) -> PipelineOutcome:
-    candidate = retrieval.best_fix
+    # A ticket that tries to instruct the agents never takes the reuse path: that path skips the
+    # reviewer, and with it the rule that sends such tickets to a human.
+    candidate = None if triage.contains_agent_instructions else retrieval.best_fix
     rejected_candidate: str | None = None
     if candidate is not None:
         checked = await llm.run(
@@ -373,9 +382,10 @@ async def record_human_correction(
     rejected_summary: str,
     note: str,
     case_file: bytes | None = None,
+    reviewer_agent: str = HUMAN_REVIEW_AGENT,
 ) -> CorrectionResult:
     """Store a reviewer's rejection as a learning. Not promoted: it guides, it doesn't answer."""
-    trace = AgentTrace(meko, agent=HUMAN_REVIEW_AGENT, ticket_ref=ticket_ref)
+    trace = AgentTrace(meko, agent=reviewer_agent, ticket_ref=ticket_ref)
     reviewer = await trace.open()
     case_file_hash = await _store_case_file(reviewer, ticket_ref, case_file)
     text = format_correction_memory(signature=signature, rejected_summary=rejected_summary, note=note, case_file=case_file_hash)
