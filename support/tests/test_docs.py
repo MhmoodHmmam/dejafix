@@ -1,0 +1,74 @@
+"""The submission docs stay true to the code: commands exist, links resolve, the Meko usage table
+names real Meko tools and every tool the code calls, and the demo fits the 5-minute limit."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+from django.conf import settings
+from django.core.management import get_commands
+from django.test import SimpleTestCase
+
+ROOT = Path(settings.BASE_DIR)
+DOC_FILES = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+CODE_DIRS = [ROOT / "dejafix", ROOT / "support"]
+MEKO_USAGE = ROOT / "docs" / "meko-usage.md"
+DEMO_SCRIPT = ROOT / "docs" / "demo-script.md"
+VIDEO_LIMIT_SECONDS = 5 * 60
+
+MANAGE_COMMAND = re.compile(r"manage\.py\s+([a-z_]+)")
+MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
+MEKO_TOOL = re.compile(r"`((?:amp|artifact|context|conversation|datapack|knowledgebase|memory|project|selflearning|track)_[a-z_]+)`")
+CODE_CALL = re.compile(r"\.call\(\s*\"([a-z_]+)\"")
+SCENE_END = re.compile(r"^#+\s.*?(\d+):(\d{2})\s*[–-]\s*(\d+):(\d{2})", re.MULTILINE)
+
+
+def tools_in_tables(text: str) -> set[str]:
+    """Tool names from the first cell of each table row; prose also names arguments like `datapack_id`."""
+    first_cells = (line.split("|")[1] for line in text.splitlines() if line.startswith("|") and line.count("|") > 2)
+    return {name for cell in first_cells for name in MEKO_TOOL.findall(cell)}
+
+
+def production_python_files():
+    for directory in CODE_DIRS:
+        for path in directory.rglob("*.py"):
+            if "tests" not in path.parts and "migrations" not in path.parts:
+                yield path
+
+
+class DocsTests(SimpleTestCase):
+    def test_every_documented_manage_command_exists(self):
+        commands = set(get_commands())
+        for doc in DOC_FILES:
+            for name in MANAGE_COMMAND.findall(doc.read_text(encoding="utf-8")):
+                with self.subTest(doc=doc.name, command=name):
+                    self.assertIn(name, commands)
+
+    def test_relative_links_resolve(self):
+        for doc in DOC_FILES:
+            for target in MARKDOWN_LINK.findall(doc.read_text(encoding="utf-8")):
+                if target.startswith(("http://", "https://", "mailto:", "#")):
+                    continue
+                path = (doc.parent / target.split("#", 1)[0]).resolve()
+                with self.subTest(doc=doc.name, link=target):
+                    self.assertTrue(path.exists(), f"{target} does not exist")
+
+    def test_meko_usage_names_only_real_tools(self):
+        live_tools = {tool["name"] for tool in json.loads((ROOT / "docs" / "meko-tools.json").read_text(encoding="utf-8"))}
+        named = tools_in_tables(MEKO_USAGE.read_text(encoding="utf-8"))
+        self.assertTrue(named)
+        self.assertEqual(named - live_tools, set())
+
+    def test_meko_usage_covers_every_tool_the_code_calls(self):
+        called = {name for path in production_python_files() for name in CODE_CALL.findall(path.read_text(encoding="utf-8"))}
+        documented = tools_in_tables(MEKO_USAGE.read_text(encoding="utf-8"))
+        self.assertTrue(called)
+        self.assertEqual(called - documented, set())
+
+    def test_demo_script_fits_the_video_limit(self):
+        scenes = SCENE_END.findall(DEMO_SCRIPT.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(scenes), 3)
+        last_end = max(int(minutes) * 60 + int(seconds) for _, _, minutes, seconds in scenes)
+        self.assertLess(last_end, VIDEO_LIMIT_SECONDS)

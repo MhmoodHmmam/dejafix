@@ -227,3 +227,42 @@
     - A02: strict CSP; `DEBUG` off
     - A05: templates auto-escape customer text, checked by a test with `<script>`
     - A08: CSRF on every POST; forms list their fields explicitly
+
+## R6: submission docs and a rehearsed demo (week 6)
+- **Decision:** write the docs the judges read and keep them true with tests:
+  - The README opens with the problem, the benchmark results and a table of docs.
+  - `docs/architecture.md`: two Mermaid diagrams (a ticket's path, the self-learning loop), the components and each agent's Meko identity.
+  - `docs/meko-usage.md`: every Meko tool the code calls, where and why; what we learned about Meko Cloud; the tools we don't use and why. Its weight is the largest in the judging (Meko use, 30%).
+  - `docs/demo-script.md`: eight timed scenes under 5 minutes, with English narration and the exact tickets and clicks.
+  - MIT `LICENSE`.
+- **Tests** (`support/tests/test_docs.py`), because docs go stale silently. They fail when:
+  - a documented `manage.py` command doesn't exist;
+  - a relative link is broken;
+  - the Meko usage tables name a tool that isn't in `docs/meko-tools.json`, or miss a tool the code calls;
+  - the demo's last scene ends at 5:00 or later.
+  - Tool names are read from the first column of the tables only, because the prose also names arguments such as `datapack_id`. Checked by hand that a removed row and a made-up tool both fail.
+- **Live rehearsal** (local server, built-in browser, real Claude and Meko):
+  - I approved T002 on its ticket page after checking its fix against `webhooks.md`. The fix was promoted to collective memory.
+  - T014, the same problem from another customer, reused it: 2,801 tokens and 8.1 s of model time, against 5,779 tokens and 17.4 s for T002 (−52% tokens). The reply was adapted to the customer's PDF invoices.
+  - Cost of the rehearsal: about $0.02.
+- **Fresh-copy check:**
+  - I copied only the files git would publish (tracked and new, honouring `.gitignore`) into an empty folder and followed the README:
+    - a new venv with the pinned requirements;
+    - `.env` from `.env.example`;
+    - `migrate`, then `load_tickets` (36 created);
+    - `check`, then the test suite: 176 tests OK.
+  - The commands that need real keys were not run there.
+- **Publishing checks:**
+  - The whole git history was scanned for the real `.env` values, the demo password and key patterns: none found.
+  - `var/` and `.env` were never committed.
+  - The commit author email is a personal address and becomes public when the repository is pushed.
+- **Claims checked against data:** "7 of the 17 reuses crossed resolvers" was counted from the benchmark results, not assumed.
+- **Rejected:**
+  - PNG screenshots in the README: they go stale with every UI change, and the video shows the pages.
+  - Moving Django's state to a Meko-managed Postgres cluster (`amp_*` tools): a new dependency and possible cost. It is listed in `meko-usage.md` as not done and left for week 7 if wanted.
+- **Sources:**
+  - [source] Django 5.2.19 installed, `core/management/__init__.py`: `get_commands()` returns every installed command.
+  - [read] `docs/meko-tools.json` (live schemas saved by `meko_probe`): the tool names in the usage doc.
+  - [read] the benchmark results in the local database: reuse counts per resolver.
+  - [knowledge] GitHub renders Mermaid code blocks in Markdown files.
+  - [knowledge] The hackathon's submission rules (video under 5 minutes, a public repo with setup instructions, optional docs), read in week 1.
