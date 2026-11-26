@@ -1,8 +1,9 @@
 # DejaFix architecture
 
 DejaFix is a Django app that runs a small team of Claude agents. All memory lives in Meko: the
-agents share what they learn through one Meko datapack. Django keeps only a local copy of each
-ticket's outcome, for the staff pages and the benchmark.
+agents share what they learn through one Meko datapack. Django keeps a copy of each ticket's
+outcome for the staff pages and the benchmark, in SQLite or in a Postgres cluster that Meko
+manages in the same datapack.
 
 ## A ticket's path
 

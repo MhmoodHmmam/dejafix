@@ -6,3 +6,5 @@ mcp==2.3.0
 anyio==4.16.0
 httpx2==2.16.2
 pydantic==2.14.4
+# Postgres driver, used only when DEJAFIX_DB_HOST is set (config/database.py)
+psycopg[binary]==3.3.8

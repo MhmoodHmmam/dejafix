@@ -10,9 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 import secrets
+import sys
 from pathlib import Path
 
+from config.database import database_config
 from config.env import env_bool, env_float, env_list, env_str, load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -76,12 +79,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+# SQLite unless DEJAFIX_DB_HOST is set (then Postgres, e.g. a Meko AMP cluster); see config/database.py.
+# `manage.py test` stays on SQLite (offline, fast) unless DEJAFIX_TEST_ON_POSTGRES=1.
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+DATABASES = {"default": database_config(os.environ, BASE_DIR, running_tests=RUNNING_TESTS)}
 
 
 # Password validation

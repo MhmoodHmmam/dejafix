@@ -3,7 +3,8 @@
 Meko is DejaFix's only memory. Each agent has its own Meko identity. Every step is a traced
 conversation turn. Fixes and human corrections are memories. The documentation is Meko's
 knowledge base, and the evidence behind each decision is a Meko artifact. Meko's self-learning
-grades tell DejaFix which articles are missing.
+grades tell DejaFix which articles are missing. The app's own database can be a Postgres cluster
+in the same Meko datapack.
 
 All calls go through one gateway (`dejafix/meko/gateway.py`). It sets `agent_id` and
 `conversation_id` in code, checks every call against Meko's live tool schemas
@@ -52,6 +53,27 @@ All calls go through one gateway (`dejafix/meko/gateway.py`). It sets `agent_id`
 | `datapack_create` | `support/benchmark.py` | A fresh datapack per benchmark arm, so the two arms can't see each other's memory. |
 | `datapack_list` | `support/management/commands/meko_probe.py` | A read-only connection check. |
 
+### Postgres (AMP): the app's own database
+
+DejaFix's Django state (tickets, resolutions, agent runs, gaps, benchmark results) can live in a
+Postgres cluster that Meko manages in the same datapack. Setting `DEJAFIX_DB_HOST` switches Django
+to it; without it, a local SQLite file is used (see [config/database.py](../config/database.py)).
+The cluster was provisioned once with these tools:
+
+| Tool | What for |
+|---|---|
+| `amp_core_budget` | Checked the free tier first: 0.5 vCPU available, none used. |
+| `amp_cluster_create` | Created `dejafix-app` with a read-write endpoint at the free-tier size. The endpoint is public, so access is limited to one IP (`/32`). We sent our own random password, stored in `.env` only. |
+| `amp_compute_list` | Found the endpoint's address and login user. |
+
+Django connects with TLS required (`sslmode=require`, or a stricter mode), a 10 s connect timeout
+and health-checked persistent connections. A half-configured database stops the app at startup
+instead of silently falling back to SQLite.
+
+Checked live: the whole test suite passed on this cluster (184 tests, 11 minutes, as every query
+crosses the network). The staff pages load in about 1 to 2 seconds from a home connection.
+`manage.py test` stays on SQLite unless `DEJAFIX_TEST_ON_POSTGRES=1`.
+
 ## How we use Meko's identities
 
 - **`agent_id` is set by code, never by the model.** Each agent gets its own ID (see
@@ -99,4 +121,4 @@ These were checked against the live service and are in the [decision log](decisi
 | `datapack_update`, `datapack_delete`, `datapack_search`, `datapack_describe` | One datapack per environment, plus one per benchmark arm. We never delete anything. |
 | `artifact_get` | Case files are written for audit. They are read in the portal, not by the agents. |
 | `project_create` and the other `project_*` tools | One datapack is enough for one support team. Projects would group several teams. |
-| `amp_cluster_create` and the other `amp_*` tools | These manage YugabyteDB clusters. DejaFix stores its own small state in SQLite locally. Moving that state to a Meko-managed Postgres cluster is a possible next step, not done. |
+| `amp_branch_create` and the other `amp_*` tools | One cluster and one endpoint are enough. Copy-on-write branches would suit the benchmark (one branch per arm), but that would mean re-running it. |

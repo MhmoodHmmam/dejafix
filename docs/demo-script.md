@@ -96,7 +96,8 @@ If T010's first fix already mentions both, approve it instead and say that the d
 **Show:** [meko-usage.md](meko-usage.md) on GitHub, or a ticket's trace in the Meko portal.
 
 > Conversations, traces, token usage, memories, collective memory, the knowledge base,
-> self-learning and artifacts: DejaFix uses Meko for all of its memory. Never solve it twice.
+> self-learning, artifacts, and even the app's own Postgres database: DejaFix runs on Meko.
+> Never solve it twice.
 
 ## Recording tips
 

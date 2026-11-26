@@ -266,3 +266,46 @@
   - [read] the benchmark results in the local database: reuse counts per resolver.
   - [knowledge] GitHub renders Mermaid code blocks in Markdown files.
   - [knowledge] The hackathon's submission rules (video under 5 minutes, a public repo with setup instructions, optional docs), read in week 1.
+
+## R7: public repository and the app's database on Meko Postgres (week 7)
+- **Decision, publishing:**
+  - The six commits were rewritten with GitHub's noreply address (`git filter-branch --env-filter`), keeping dates and content. Every tree is identical to the backup, and the personal address appears 0 times in what was pushed.
+  - Created the public repository `MhmoodHmmam/dejafix` with `gh`, pushed `main` only (no tags), and added a description and topics.
+  - Checked from GitHub itself: a clone followed the README to 176 passing tests, and both Mermaid diagrams render.
+- **Decision, database:**
+  - `config/database.py` builds `DATABASES` from the environment. Without `DEJAFIX_DB_HOST` it uses SQLite, as before, so tests and judges' clones need nothing new.
+  - With it, Django uses Postgres:
+    - TLS is required (`require`, `verify-ca` or `verify-full`; weaker modes can fall back to plaintext and are refused);
+    - 10 s connect timeout;
+    - persistent connections (60 s) with health checks.
+  - A half-configured database raises `ImproperlyConfigured` at startup. Its messages never include the password.
+- **Meko AMP setup:**
+  - `amp_core_budget` showed the free tier: 0.5 vCPU, none used.
+  - `amp_cluster_create`: `dejafix-app` (Postgres 18.2) at that size. The endpoint is public, so it allows only the user's current IP as a /32 (detected with api.ipify.org, with the user's OK).
+  - The password was generated locally with `secrets` and written to `.env` before the call, so it could not be lost.
+  - `amp_compute_list` gave the endpoint and login user.
+  - A dedicated `dejafix` database was created.
+- **Data move:**
+  - `dumpdata` (without content types, permissions, sessions and admin log), then `migrate` and `loaddata` on Postgres: 146 objects.
+  - The row count of every model matches SQLite, and every ID sequence is past its table's maximum ID.
+- **New dependency:** `psycopg[binary]==3.3.8`, released 2026-11-04, with a binary wheel for Python 3.14 on Windows. Django 5.2 needs psycopg 3.1.8 or newer.
+- **Live checks on the cluster:**
+  - The full suite passed on Postgres: 184 tests in 668 s.
+  - The staff pages showed the moved data correctly. Load times: dashboard about 1.9 s, ticket pages about 1.0 s, gaps 0.7 s. Each query is a network round trip.
+- **Fix found during the checks:**
+  - With Postgres in `.env`, a plain `manage.py test` went to the network and took 11 minutes, which broke the README's "tests never touch the network".
+  - Tests now use SQLite unless `DEJAFIX_TEST_ON_POSTGRES=1`. Both cases have a test, written failing first.
+  - The interrupted run left `test_dejafix` on the cluster, and I dropped it.
+  - On Windows PowerShell 5.1, `$env:X = ""` deletes the variable, so it cannot be used to override `.env`.
+- **Rejected:**
+  - Letting Meko generate the password: it comes back once in the tool reply, so it would pass through the output. Ours went straight to `.env`.
+  - Opening the endpoint to a range of addresses: Meko refuses anything wider than /24, and one /32 is the least exposure.
+  - A management command to create the cluster: it would run once. The steps and tools are documented in `meko-usage.md`.
+- **Sources:**
+  - [read] Meko tool descriptions in `docs/meko-tools.json`:
+    - `amp_cluster_create`: free-tier size, `ingress_external` needs `allowed_cidrs` no wider than /24 and can't be changed later, the password rules;
+    - `amp_core_budget`.
+  - [source] Django 5.2.19 installed, `db/backends/postgresql/base.py`: psycopg 3.1.8 or newer is required, and `OPTIONS` go to the connection.
+  - [read] PyPI JSON for psycopg 3.3.8: release date and `requires_python`.
+  - [knowledge] libpq `sslmode` values: `prefer` and `allow` can connect without encryption, `require` encrypts without checking the certificate, and `verify-full` also checks the host name.
+  - [knowledge] Django docs, "Databases": `CONN_MAX_AGE` and `CONN_HEALTH_CHECKS`.

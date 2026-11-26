@@ -61,6 +61,11 @@ Copy-Item .env.example .env   # then fill in the keys
 The datapack must be created in the portal: over MCP, `conversation_create` needs a datapack
 and `datapack_create` needs a conversation.
 
+**Database (optional).** By default Django uses a local SQLite file. To keep the app's state in
+Postgres, such as a cluster Meko manages in the same datapack (`amp_cluster_create`), set the
+`DEJAFIX_DB_*` variables in `.env.example`. TLS is required. See
+[docs/meko-usage.md](docs/meko-usage.md#postgres-amp-the-apps-own-database).
+
 ## Check the Meko connection
 
 ```powershell
@@ -152,7 +157,9 @@ documentation. The only difference is Meko's shared memory. Results: [docs/bench
 ```
 
 Tests never touch the network. They run against an in-process fake of Meko's MCP server
-(`dejafix/tests/fakes.py`) that follows the real server's reply conventions.
+(`dejafix/tests/fakes.py`) that follows the real server's reply conventions. They also use SQLite
+even when `.env` points Django at Postgres. Set `DEJAFIX_TEST_ON_POSTGRES=1` to run them on your
+Postgres instead (slower: every query crosses the network).
 
 ## Layout
 
