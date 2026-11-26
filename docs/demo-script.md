@@ -86,12 +86,14 @@ If T010's first fix already mentions both, approve it instead and say that the d
 
 ### 3:55–4:35 · Does shared memory help? The benchmark
 
-**Show:** `/benchmark/`, then the top table of [benchmark.md](benchmark.md).
+**Show:** the top table of [benchmark.md](benchmark.md) (all four runs), then `/benchmark/` and
+its lookalike rows (T037–T042).
 
-> Same agents, same 36 tickets, run twice in separate Meko datapacks. The only difference is
-> shared memory. With Meko: 30 correct instead of 25, a third fewer tokens on repeat tickets,
-> and 19 tickets for a human instead of 36. No wrong reuse, and both prompt-injection tickets
-> were escalated without storing anything.
+> Same agents, same 36 tickets, in separate Meko datapacks, and we ran it twice. The only
+> difference is shared memory. With Meko: 30 and 28 correct instead of 25 and 26, a third fewer
+> tokens on repeat tickets, and about 20 tickets for a human instead of 36. Then six lookalikes,
+> worded like one problem but caused by another: all six right with Meko, and none reused the
+> wrong fix. Both prompt-injection tickets were escalated without storing anything.
 
 ### 4:35–4:55 · Close
 

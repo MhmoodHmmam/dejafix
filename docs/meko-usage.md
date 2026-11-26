@@ -93,12 +93,15 @@ queries (it used 11) and loads in about 1 second. The first load after 5 minutes
 
 ## Results that depend on Meko
 
-From the [benchmark](benchmark.md) (36 tickets, same agents, docs only vs DejaFix + Meko):
+From the [benchmark](benchmark.md) (36 core tickets, same agents, docs only vs DejaFix + Meko,
+two runs per arm, run 1 / run 2):
 
-- Correct fixes on repeat tickets: 17/24 without shared memory, 22/24 with it.
-- Tokens on repeat tickets: 5,348 vs 3,537 on average (−34%).
-- Tickets a human had to handle: 36 vs 19.
+- Correct fixes on repeat tickets: 17 / 18 of 24 without shared memory, 22 / 19 with it.
+- Tokens on repeat tickets: 5,348 / 5,329 vs 3,537 / 3,670 on average (−34% / −31%).
+- Tickets a human had to handle: 36 / 36 vs 19 / 20.
 - Reuse of another issue's fix: 0. Injection tickets reused or stored: 0 of 2.
+- Six lookalike tickets (run 2), each worded like another issue: 4 of 6 correct from the docs, 6 of 6
+  with shared memory. Five reused the fix for their real issue, none the fix they resemble.
 
 From the self-learning loop (week 3, live): two weak searches went from Meko's "mid" band to
 "high" after the librarian's articles were published (best score 0.68 → 0.78 and 0.69 → 0.87).

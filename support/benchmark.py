@@ -12,6 +12,7 @@ import json
 import logging
 import secrets
 import uuid
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -32,7 +33,19 @@ from dejafix.agents.pipeline import (
 )
 from dejafix.agents.trace import AgentTrace
 from dejafix.agents.retrieval import REUSE_MIN_RERANK_SCORE
-from dejafix.bench import BenchTicket, CandidateScores, GroundTruth, best_threshold_range, calibrate, grade, load_ground_truth, oracle_review
+from dejafix.bench import (
+    FIRST_OCCURRENCE,
+    LOOKALIKE,
+    REPEAT,
+    BenchTicket,
+    CandidateScores,
+    GroundTruth,
+    best_threshold_range,
+    calibrate,
+    grade,
+    load_ground_truth,
+    oracle_review,
+)
 from dejafix.llm import LLMError, StructuredLLM
 from dejafix.meko import MekoCallRecord, MekoConfig, MekoError, MekoGateway, MekoSession, MekoToolError
 from support.models import BenchmarkResult, BenchmarkRun
@@ -295,6 +308,7 @@ class ArmSummary:
     tickets: int
     total: int
     errors: int
+    core: int  # first occurrences and repeats; lookalikes are counted apart
     correct: int
     correct_wave1: int
     wave1: int
@@ -312,16 +326,28 @@ class ArmSummary:
     injection_safe: int
     injections: int
     cost_usd: float
+    lookalikes: int
+    correct_lookalikes: int
+    reused_lookalikes: int
+    false_reuse_lookalikes: int
 
 
 def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResult] | None = None) -> ArmSummary:
-    """`all_results`: the run's results, errored ones included, if the caller already fetched them."""
+    """`all_results`: the run's results, errored ones included, if the caller already fetched them.
+
+    Quality metrics cover the core tickets (first occurrences and repeats) only, so a run made
+    before the lookalikes existed compares with one made after. Lookalikes get their own fields.
+    """
     if all_results is None:
         all_results = list(run.results.all())
     results = [result for result in all_results if not result.error]
-    wave1 = [result for result in results if result.wave == 1]
-    repeats = [result for result in results if result.wave == 2]
-    injections = [result for result in results if result.injection]
+    if run.status == BenchmarkRun.Status.DONE:
+        total = len(results)  # a finished run is complete for the tickets that existed when it ran
+    wave1 = [result for result in results if result.wave == FIRST_OCCURRENCE]
+    repeats = [result for result in results if result.wave == REPEAT]
+    lookalikes = [result for result in results if result.wave == LOOKALIKE]
+    core = wave1 + repeats
+    injections = [result for result in core if result.injection]
     input_tokens = sum(result.input_tokens for result in results)
     output_tokens = sum(result.output_tokens for result in results)
 
@@ -334,7 +360,8 @@ def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResu
         tickets=len(results),
         total=total,
         errors=len(all_results) - len(results),
-        correct=sum(result.correct for result in results),
+        core=len(core),
+        correct=sum(result.correct for result in core),
         correct_wave1=sum(result.correct for result in wave1),
         wave1=len(wave1),
         correct_repeats=sum(result.correct for result in repeats),
@@ -342,15 +369,19 @@ def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResu
         tokens=input_tokens + output_tokens,
         tokens_wave1_avg=avg([result.total_tokens for result in wave1]),
         tokens_repeats_avg=avg([result.total_tokens for result in repeats]),
-        llm_seconds_avg=avg([result.llm_ms / 1000 for result in results]),
-        meko_calls_avg=avg([result.meko_calls for result in results]),
-        reused=sum(result.source == "reused" for result in results),
-        escalated=sum(result.escalated for result in results),
-        false_reuse=sum(result.false_reuse for result in results),
-        human_touches=sum(result.needs_human for result in results),
+        llm_seconds_avg=avg([result.llm_ms / 1000 for result in core]),
+        meko_calls_avg=avg([result.meko_calls for result in core]),
+        reused=sum(result.source == "reused" for result in core),
+        escalated=sum(result.escalated for result in core),
+        false_reuse=sum(result.false_reuse for result in core),
+        human_touches=sum(result.needs_human for result in core),
         injection_safe=sum(bool(result.injection_safe) for result in injections),
         injections=len(injections),
         cost_usd=round(input_tokens / 1e6 * INPUT_USD_PER_MTOK + output_tokens / 1e6 * OUTPUT_USD_PER_MTOK, 2),
+        lookalikes=len(lookalikes),
+        correct_lookalikes=sum(result.correct for result in lookalikes),
+        reused_lookalikes=sum(result.source == "reused" for result in lookalikes),
+        false_reuse_lookalikes=sum(result.false_reuse for result in lookalikes),
     )
 
 
@@ -373,13 +404,19 @@ def calibration_for(run: BenchmarkRun):
 
 
 def build_report(runs: Sequence[BenchmarkRun], *, generated_at: str) -> tuple[str, dict[str, Any]]:
-    total = len(ground_truth().tickets)
-    summaries = [summarize(run, total) for run in runs]
+    truth = ground_truth()
+    tickets_by_ref = {ticket.ref: ticket for ticket in truth.tickets}
+    summaries = summaries_for(runs)
     data: dict[str, Any] = {"app": "dejafix", "kind": "benchmark_report", "generated_at": generated_at, "arms": [s.__dict__ for s in summaries]}
+    runs_per_arm = Counter(run.arm for run in runs)
+    repetitions = (
+        "one run per arm (no repetitions)" if max(runs_per_arm.values(), default=1) == 1
+        else ", ".join(f"{count} runs of {arm}" for arm, count in sorted(runs_per_arm.items()))
+    )
     lines = [
         "# DejaFix benchmark",
         "",
-        f"Generated {generated_at}. Model `claude-opus-5-5`; one run per arm (no repetitions).",
+        f"Generated {generated_at}. Model `claude-opus-5-5`; {repetitions}.",
         "",
         "Both arms run the same agents, ticket order, prompts and documentation, each in its own fresh Meko",
         "datapack. The only difference is shared memory: approved fixes and human corrections.",
@@ -388,6 +425,9 @@ def build_report(runs: Sequence[BenchmarkRun], *, generated_at: str) -> tuple[st
         "- **Human touches:** tickets a person must handle (new fixes to review, or escalations).",
         "- **Simulated reviewer (Meko arm):** approves complete fixes and, when it rejects one, names the missing",
         "  keywords. Its notes come from the ground truth, so it helps more than a hurried human might.",
+        "- **Lookalikes (wave 3):** tickets that read like one issue but are caused by another, run after the 36",
+        "  core tickets. They test whether an approved fix is reused for the wrong problem. They are counted only",
+        "  in the lookalike rows, tickets done and total tokens; every other row covers the core tickets.",
         "",
     ]
     if any(s.tickets < s.total for s in summaries):
@@ -399,9 +439,12 @@ def build_report(runs: Sequence[BenchmarkRun], *, generated_at: str) -> tuple[st
         lines.append(f"| {label} | " + " | ".join(render(s) for s in summaries) + " |")
 
     row("Tickets done", lambda s: f"{s.tickets}/{s.total}" + (f" ({s.errors} failed)" if s.errors else ""))
-    row("Correct, all", lambda s: f"{s.correct}/{s.tickets}")
+    row("Correct, first occurrences and repeats", lambda s: f"{s.correct}/{s.core}")
     row("Correct, first occurrences", lambda s: f"{s.correct_wave1}/{s.wave1}")
     row("Correct, repeats", lambda s: f"{s.correct_repeats}/{s.repeats}")
+    row("Correct, lookalikes", lambda s: f"{s.correct_lookalikes}/{s.lookalikes}" if s.lookalikes else "-")
+    row("Lookalikes that reused the right fix", lambda s: str(s.reused_lookalikes - s.false_reuse_lookalikes) if s.lookalikes else "-")
+    row("Lookalikes that reused another issue's fix", lambda s: str(s.false_reuse_lookalikes) if s.lookalikes else "-")
     row("Avg tokens, first occurrences", lambda s: f"{s.tokens_wave1_avg:,.0f}")
     row("Avg tokens, repeats", lambda s: f"{s.tokens_repeats_avg:,.0f}")
     row("Avg model time per ticket", lambda s: f"{s.llm_seconds_avg:.1f} s")
@@ -409,7 +452,7 @@ def build_report(runs: Sequence[BenchmarkRun], *, generated_at: str) -> tuple[st
     row("Escalated to a human", lambda s: str(s.escalated))
     row("Reused an approved fix", lambda s: str(s.reused))
     row("False reuse (another issue's fix)", lambda s: str(s.false_reuse))
-    row("Human touches", lambda s: f"{s.human_touches}/{s.tickets}")
+    row("Human touches", lambda s: f"{s.human_touches}/{s.core}")
     row("Injection tickets escalated, nothing stored", lambda s: f"{s.injection_safe}/{s.injections}")
     row("Total tokens / est. cost", lambda s: f"{s.tokens:,} / ${s.cost_usd:.2f}")
 
@@ -437,8 +480,10 @@ def build_report(runs: Sequence[BenchmarkRun], *, generated_at: str) -> tuple[st
     for run in runs:
         for result in run.results.all():
             status = result.error[:40] if result.error else ("yes" if result.correct else "no")
+            ticket = tickets_by_ref.get(result.ticket_ref)
+            issue = f"{result.issue} (looks like {ticket.lookalike_of})" if ticket and ticket.lookalike_of else result.issue
             lines.append(
-                f"| {run.name} | {result.ticket_ref} | {result.issue} | {result.wave} | {result.source or '-'} | {status} | "
+                f"| {run.name} | {result.ticket_ref} | {issue} | {result.wave} | {result.source or '-'} | {status} | "
                 f"{', '.join(result.missing_keywords) or '-'} | {result.total_tokens:,} | {result.human_decision or ('escalated' if result.escalated else '-')} |"
             )
     return "\n".join(lines) + "\n", data

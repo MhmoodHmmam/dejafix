@@ -19,6 +19,15 @@ DEMO_SCRIPT = ROOT / "docs" / "demo-script.md"
 VIDEO_LIMIT_SECONDS = 5 * 60
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 USES_LINE = re.compile(r"uses:\s*([\w./-]+)@(\S+)")
+BENCHMARK_REPORT = ROOT / "docs" / "benchmark.md"
+# README results row -> the benchmark report row it quotes, for run 1 / run 2 of each arm.
+README_RESULT_ROWS = {
+    "Correct fixes, of 36": "Correct, first occurrences and repeats",
+    "Correct on repeat tickets, of 24": "Correct, repeats",
+    "Avg tokens on repeat tickets": "Avg tokens, repeats",
+    "Tickets a human had to handle, of 36": "Human touches",
+}
+NUMBER = re.compile(r"\d[\d,]*")
 
 MANAGE_COMMAND = re.compile(r"manage\.py\s+([a-z_]+)")
 MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -31,6 +40,14 @@ def tools_in_tables(text: str) -> set[str]:
     """Tool names from the first cell of each table row; prose also names arguments like `datapack_id`."""
     first_cells = (line.split("|")[1] for line in text.splitlines() if line.startswith("|") and line.count("|") > 2)
     return {name for cell in first_cells for name in MEKO_TOOL.findall(cell)}
+
+
+def table_rows(text: str) -> dict[str, list[str]]:
+    return {
+        cells[0]: cells[1:]
+        for line in text.splitlines()
+        if line.startswith("|") and (cells := [cell.strip() for cell in line.strip("|").split("|")])
+    }
 
 
 def production_python_files():
@@ -85,3 +102,14 @@ class DocsTests(SimpleTestCase):
         self.assertGreaterEqual(len(scenes), 3)
         last_end = max(int(minutes) * 60 + int(seconds) for _, _, minutes, seconds in scenes)
         self.assertLess(last_end, VIDEO_LIMIT_SECONDS)
+
+    def test_readme_results_quote_the_benchmark_report(self):
+        report = table_rows(BENCHMARK_REPORT.read_text(encoding="utf-8"))
+        readme = table_rows((ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertEqual(report["Metric"], ["D1 (docs_only)", "D2 (docs_only)", "M1 (meko)", "M2 (meko)"])
+        for readme_label, report_label in README_RESULT_ROWS.items():
+            with self.subTest(row=readme_label):
+                docs_cell, meko_cell = readme[readme_label]
+                quoted = NUMBER.findall(docs_cell)[:2] + NUMBER.findall(meko_cell)[:2]
+                expected = [NUMBER.findall(cell)[0] for cell in report[report_label]]
+                self.assertEqual(quoted, expected)

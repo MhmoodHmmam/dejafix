@@ -83,10 +83,10 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
 def _benchmark_bars(docs, meko) -> list[dashboard.BarRow]:
     return dashboard.bar_rows(
         [
-            ("Correct fixes", docs.correct, meko.correct, f"/{docs.tickets}"),
+            ("Correct fixes", docs.correct, meko.correct, f"/{docs.core}"),
             ("Correct on repeats", docs.correct_repeats, meko.correct_repeats, f"/{docs.repeats}"),
             ("Avg tokens on repeats", docs.tokens_repeats_avg, meko.tokens_repeats_avg, ""),
-            ("Tickets a human handled", docs.human_touches, meko.human_touches, f"/{docs.tickets}"),
+            ("Tickets a human handled", docs.human_touches, meko.human_touches, f"/{docs.core}"),
         ]
     )
 

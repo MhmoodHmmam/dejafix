@@ -26,10 +26,10 @@ def write_json(folder: str, document: object) -> Path:
 
 
 class LoadTicketsTests(TestCase):
-    def test_real_dataset_loads_36_tickets_and_rerun_is_idempotent(self):
+    def test_real_dataset_loads_42_tickets_and_rerun_is_idempotent(self):
         call_command("load_tickets", stdout=StringIO())
         call_command("load_tickets", stdout=StringIO())
-        self.assertEqual(Ticket.objects.count(), 36)
+        self.assertEqual(Ticket.objects.count(), 42)  # 36 core tickets + 6 lookalikes (week 9)
         self.assertEqual(Ticket.objects.filter(expected_issue="").count(), 0)
         arabic = Ticket.objects.get(external_id="T020")
         self.assertIn("العملاء", arabic.subject)

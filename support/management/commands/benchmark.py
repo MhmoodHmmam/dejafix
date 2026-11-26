@@ -12,10 +12,9 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
 from dejafix.llm import ClaudeLLM, LLMError, StructuredLLM
+from support import benchmark
 from support.benchmark import run_benchmark, spent_tokens
 from support.models import BenchmarkRun
-
-MAX_TICKETS = 36
 
 
 class Command(BaseCommand):
@@ -27,12 +26,13 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("name")
-        parser.add_argument("--limit", type=int, default=MAX_TICKETS, help=f"Max tickets this time (1-{MAX_TICKETS}).")
+        parser.add_argument("--limit", type=int, help="Max tickets this time (default: all that are left).")
 
     def handle(self, *args: Any, **options: Any) -> None:
-        limit = options["limit"]
-        if not 1 <= limit <= MAX_TICKETS:
-            raise CommandError(f"--limit must be between 1 and {MAX_TICKETS}")
+        total = len(benchmark.ground_truth().tickets)
+        limit = total if options["limit"] is None else options["limit"]
+        if not 1 <= limit <= total:
+            raise CommandError(f"--limit must be between 1 and {total}, the number of tickets")
         run = BenchmarkRun.objects.filter(name=options["name"]).first()
         if run is None:
             raise CommandError(f"Unknown run {options['name']}. Create it with benchmark_setup.")
@@ -52,5 +52,5 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"Stopped: token budget {run.token_budget:,} reached."))
         done = run.results.filter(error="").count()
         self.stdout.write(self.style.SUCCESS(
-            f"{run.name}: {progress.ran} ran ({progress.failed} failed), {done}/36 done, {spent_tokens(run):,} tokens so far."
+            f"{run.name}: {progress.ran} ran ({progress.failed} failed), {done}/{total} done, {spent_tokens(run):,} tokens so far."
         ))

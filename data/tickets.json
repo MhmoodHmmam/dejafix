@@ -1,5 +1,5 @@
 {
-  "about": "Synthetic tickets for the DejaFix demo (fictional product LumenPay). 36 tickets over 12 root issues (2 to 4 phrasings each, two of them in Arabic, two carrying prompt-injection attempts). Wave 1 (T001-T012) is every issue's first occurrence; T013-T036 are repeats. expected_issue, the issue keywords and the injection flag are ground truth for grading and are never shown to the agents.",
+  "about": "Synthetic tickets for the DejaFix demo (fictional product LumenPay). 42 tickets over 12 root issues (2 to 4 phrasings each, two of them in Arabic, two carrying prompt-injection attempts). Wave 1 (T001-T012) is every issue's first occurrence; T013-T036 are repeats. T037-T042 are lookalikes: each reads like the issue in lookalike_of, but its real issue is expected_issue, so they test whether an approved fix is reused for the wrong problem. expected_issue, lookalike_of, the issue keywords and the injection flag are ground truth for grading and are never shown to the agents.",
   "issues": {
     "payout_weekend_delay": ["T+2", "business days", "Payouts > Calendar"],
     "webhook_duplicate_retries": ["10 seconds", "idempotent", "event id"],
@@ -124,6 +124,25 @@
      "body": "We charge customers in AED but our payout bank account is in USD. Each payout is about 1.5% less than expected. Is that a fee? Can we get paid in AED instead?"},
     {"external_id": "T036", "customer": "Northwind Health Clinic", "expected_issue": "sso_domain_not_verified",
      "subject": "Can't verify domain for SSO",
-     "body": "Our IT team added the lumenpay-verify TXT record to our DNS an hour ago, but the SSO page still says domain not verified. Did we do something wrong?"}
+     "body": "Our IT team added the lumenpay-verify TXT record to our DNS an hour ago, but the SSO page still says domain not verified. Did we do something wrong?"},
+
+    {"external_id": "T037", "customer": "Juniper Yoga Studio", "expected_issue": "payout_fx_fee", "lookalike_of": "payout_weekend_delay",
+     "subject": "Friday payout arrived, but it's short",
+     "body": "Our payout for last Friday's sales arrived on Tuesday, on the date the payout calendar showed. But the amount is lower than our sales total. Our customers paid in USD and our bank account is in EUR. Why is part of the money missing, and can we avoid it?"},
+    {"external_id": "T038", "customer": "Relay Parcel Co", "expected_issue": "api_rate_limit_429", "lookalike_of": "webhook_duplicate_retries",
+     "subject": "Webhook processing fails during busy hours",
+     "body": "On busy evenings our server receives hundreds of payment_succeeded webhooks within a minute. Each event arrives only once and our endpoint answers 200 right away. For every event we then call your API to load the payment details, and many of those calls fail with 429 rate_limited. How do we stop losing these updates?"},
+    {"external_id": "T039", "customer": "Cedar & Co Accounting", "expected_issue": "csv_export_encoding", "lookalike_of": "invoice_missing_tax",
+     "subject": "VAT column garbled in our invoice export",
+     "body": "VAT shows correctly on our invoices in the dashboard. But when we export the invoice list as CSV and open it in Excel on Windows, the euro sign in the VAT column and our customers' Arabic names turn into symbols like Ø§Ù„. Our accountant thinks the tax data is corrupted. Is it?"},
+    {"external_id": "T040", "customer": "Brightpath Dental", "expected_issue": "sso_domain_not_verified", "lookalike_of": "twofa_lost_device",
+     "subject": "No more phone codes: SSO setup fails",
+     "body": "Our staff keep getting locked out when they change phones, so we want everyone to sign in with our company SSO instead of authenticator codes. We are on the Business plan, but when we try to enable SSO the page says 'domain not verified' for our domain. What do we need to do?"},
+    {"external_id": "T041", "customer": "Northstar Fitness", "expected_issue": "subscription_proration", "lookalike_of": "refund_failed_card_closed",
+     "subject": "Customer wants a refund for an extra charge",
+     "body": "A subscriber upgraded from Basic to Pro halfway through the month and was charged an extra 23.40 straight away. They expected to pay the new price from their next renewal and are asking us to refund the charge. Why did this happen, and how do we make future plan changes start at renewal?"},
+    {"external_id": "T042", "customer": "Tidewater Books", "expected_issue": "payment_link_expired", "lookalike_of": "api_key_wrong_environment",
+     "subject": "Live payment link stopped working",
+     "body": "We created a payment link in live mode five weeks ago and put it in our newsletter. Now customers see 'This payment link has expired'. Did we use the wrong key or the test environment? We need a link that keeps working."}
   ]
 }

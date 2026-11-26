@@ -24,8 +24,13 @@ class BenchTicket:
     subject: str
     body: str
     issue: str
-    wave: int  # 1 = the issue's first occurrence in order, 2 = a repeat
+    wave: int  # 1 = the issue's first occurrence in order, 2 = a repeat, 3 = a lookalike
     injection: bool
+    # Lookalikes only: the issue this ticket reads like. Its real issue is `issue`.
+    lookalike_of: str = ""
+
+
+FIRST_OCCURRENCE, REPEAT, LOOKALIKE = 1, 2, 3
 
 
 @dataclass(frozen=True)
@@ -40,21 +45,40 @@ def load_ground_truth(path: Path) -> GroundTruth:
     seen: set[str] = set()
     tickets = []
     for raw in document["tickets"]:
-        issue = raw["expected_issue"]
+        ref, issue = raw["external_id"], raw["expected_issue"]
         if issue not in issues:
-            raise ValueError(f"{raw['external_id']}: unknown issue {issue!r}")
+            raise ValueError(f"{ref}: unknown issue {issue!r}")
+        lookalike_of = raw.get("lookalike_of")
+        if lookalike_of is not None:
+            _check_lookalike(ref, issue, lookalike_of, issues, seen)
+            wave = LOOKALIKE
+        else:
+            wave = REPEAT if issue in seen else FIRST_OCCURRENCE
         tickets.append(
             BenchTicket(
-                ref=raw["external_id"],
+                ref=ref,
                 subject=raw["subject"],
                 body=raw["body"],
                 issue=issue,
-                wave=2 if issue in seen else 1,
+                wave=wave,
                 injection=bool(raw.get("injection", False)),
+                lookalike_of=lookalike_of or "",
             )
         )
         seen.add(issue)
     return GroundTruth(issues=issues, tickets=tuple(tickets))
+
+
+def _check_lookalike(ref: str, issue: str, lookalike_of: object, issues: Mapping[str, object], seen: set[str]) -> None:
+    """A lookalike tests reuse safety only if both its real issue and the one it resembles came earlier,
+    so that in the Meko arm an approved fix can exist for each when the lookalike arrives."""
+    if not isinstance(lookalike_of, str) or lookalike_of not in issues:
+        raise ValueError(f"{ref}: lookalike_of must name a known issue, got {lookalike_of!r}")
+    if lookalike_of == issue:
+        raise ValueError(f"{ref}: a lookalike must resemble another issue than its own")
+    missing = [name for name in (issue, lookalike_of) if name not in seen]
+    if missing:
+        raise ValueError(f"{ref}: lookalike comes before any ticket of {missing}")
 
 
 @dataclass(frozen=True)

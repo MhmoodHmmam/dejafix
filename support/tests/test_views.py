@@ -291,6 +291,18 @@ class BenchmarkAndDashboardTests(ViewTestCase):
         self.assertContains(page, "Reuse threshold")
         self.assertContains(self.client.get(reverse("support:dashboard")), "Benchmark: same agents")
 
+    def test_benchmark_page_marks_lookalikes_and_keeps_them_out_of_core_counts(self):
+        for name, arm, correct in (("D2", "docs_only", False), ("M2", "meko", True)):
+            run = self.finished_run(name, arm, reused=0)
+            BenchmarkResult.objects.create(
+                run=run, ticket_ref="T037", issue="payout_fx_fee", wave=3, source="new", correct=correct, keywords_total=2,
+            )
+        page = self.client.get(reverse("support:benchmark"))
+        self.assertContains(page, "<td>Correct, first occurrences and repeats</td><td>4/4</td><td>4/4</td>", html=True)
+        self.assertContains(page, "<td>Correct, lookalikes</td><td>0/1</td><td>1/1</td>", html=True)
+        self.assertContains(page, "<td>Tickets a human handled</td><td>4/4</td><td>4/4</td>", html=True)
+        self.assertContains(page, "looks like payout_weekend_delay")
+
     def test_dashboard_shows_reuse_and_saved_tokens(self):
         self.resolved_ticket()
         self.client.post(reverse("support:resolution_approve", args=["T1"]))

@@ -354,3 +354,33 @@
   - [source] Python 3.14 `ipaddress.py`: `ip_network(strict=True)` and `is_global`.
   - [source] Django 5.2.19 `test/testcases.py`: `assertNumQueries`.
   - [knowledge] GitHub status badge URL format (`.../actions/workflows/<file>/badge.svg`), checked after the push.
+
+## R9: lookalike tickets and a second benchmark run (week 9)
+- **Decision:** six lookalike tickets, T037–T042, at the end of `data/tickets.json`:
+  - Each reads like one issue (`lookalike_of`) but is caused by another (`expected_issue`). Example: a payout that arrived on time but short is the 1.5% currency fee, not the weekend delay.
+  - They are wave 3. `load_ground_truth` refuses a lookalike unless both issues came earlier, so in the Meko arm an approved fix can exist for each.
+  - Their real issues are all answered by the existing docs (a test checks every keyword), so the knowledge base is the same as in D1 and M1.
+  - The agents see only the subject and body. A test runs the pipeline with marked issue names and finds them in no prompt and no memory.
+- **Decision:** lookalikes are counted apart:
+  - Every quality row of the report covers the 36 core tickets, so runs from before and after the lookalikes compare.
+  - New rows: lookalikes correct, reused the right fix, reused another issue's fix.
+  - A finished run counts as complete for the tickets that existed when it ran (D1 and M1: 36).
+  - `benchmark --limit` now follows the ticket count instead of a fixed 36.
+- **Results** (D2 and M2, `claude-opus-5-5`, $3.00 together; full table in `docs/benchmark.md`):
+  - Core tickets, run 1 / run 2: docs-only 25 / 26 of 36, Meko 30 / 28. Repeats 17 / 18 vs 22 / 19 of 24.
+  - Tokens on repeats: 5,348 / 5,329 vs 3,537 / 3,670 (−34% / −31%). Human touches 36 / 36 vs 19 / 20.
+  - Lookalikes: docs-only 4 of 6 (T038 missed the rate-limit keywords, T041 was escalated); Meko 6 of 6, 5 by reusing the fix of their real issue, 0 by reusing the resembled one.
+  - No false reuse in any run. Both injection tickets escalated with nothing stored, in every run.
+- **What the data does not show:**
+  - For every lookalike, Meko returned no approved fix of another issue (`best_other_issue_score` empty). Triage wrote a signature of the real cause, and the search found that issue's fix. So the reuse threshold is still not tested from below; the report still says so.
+  - T040 was offered T012's SSO fix at 0.931; the reuse check judged it a different case, and it was solved from the docs.
+  - Learning from corrections is not reliable yet. In M1 each rejection fixed the next ticket of its issue. In M2, T015 and T023 were still wrong after the notes from T003 and T010; the rate-limit issue was right only on T034, and the API-key issue on none of its three tickets.
+- **Rejected:**
+  - New issues and docs for the lookalikes: the knowledge base would differ from D1 and M1.
+  - Re-opening D1 and M1 to add the lookalikes: their memory state at ticket 37 would not match a fresh run.
+  - Averaging the two runs into one number: with two runs the range is more honest than a mean.
+- **Tests:** +3 in `test_benchmark` logic and data, +4 in runs and the report, +1 benchmark page, +1 README-vs-report. `test_real_dataset_loads_36_tickets...` became `..._42_tickets...`: the approved dataset grew by six, and the test checks the same things.
+- **Sources:**
+  - [source] `dejafix/bench.py` (`load_ground_truth`, wave), `support/benchmark.py` (`_candidate_scores`, `summarize`, `run_benchmark` status rules), `support/models.py` (`BenchmarkResult.wave` is a `PositiveSmallIntegerField`, so wave 3 needs no migration).
+  - [read] `data/kb/payouts.md`, `api.md`, `exports.md`, `security.md`, `billing.md`, `payment-links.md`: the passages that answer each lookalike.
+  - [read] Live results from Meko Postgres: `best_same_issue_score` and `best_other_issue_score` per lookalike in M2.

@@ -19,16 +19,25 @@ DejaFix's Claude agents share one memory in Meko:
 
 ## Results
 
-Same agents, same 36 synthetic tickets, each arm in its own fresh Meko datapack
-([full report](docs/benchmark.md)):
+Same agents, same 36 synthetic tickets, each arm in its own fresh Meko datapack, run twice
+(run 1 / run 2, [full report](docs/benchmark.md)):
 
 | | Docs only | DejaFix + Meko shared memory |
 |---|---|---|
-| Correct fixes | 25/36 | **30/36** |
-| Correct on repeat tickets | 17/24 | **22/24** |
-| Avg tokens on repeat tickets | 5,348 | **3,537** (−34%) |
-| Tickets a human had to handle | 36 | **19** |
+| Correct fixes, of 36 | 25 / 26 | **30 / 28** |
+| Correct on repeat tickets, of 24 | 17 / 18 | **22 / 19** |
+| Avg tokens on repeat tickets | 5,348 / 5,329 | **3,537 / 3,670** (−34% / −31%) |
+| Tickets a human had to handle, of 36 | 36 / 36 | **19 / 20** |
+| Lookalike tickets correct, of 6 (run 2) | 4 | **6** |
 | Wrong reuse / injection tickets stored | 0 / 0 of 2 | 0 / 0 of 2 |
+
+**Lookalikes** (T037–T042) read like one issue but are caused by another, for example a payout
+that arrived on time but short (the currency fee, not the weekend delay). With shared memory,
+5 of 6 reused the approved fix for their *real* issue and none reused the fix they resemble.
+What this does not show: Meko never returned the resembled issue's fix for them, so they did not
+test how low the reuse threshold can go. And learning from corrections varies: in run 1 the
+next ticket after each rejection was right. In run 2 it was not: the rate-limit issue was right
+only on its third ticket (T034), and the API-key issue on none of its three.
 
 ## Documentation
 
@@ -89,7 +98,7 @@ the read-only `datapack_list` inside a reusable probe conversation.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py load_tickets          # 36 synthetic tickets
+.\.venv\Scripts\python.exe manage.py load_tickets          # 42 synthetic tickets
 .\.venv\Scripts\python.exe manage.py seed_knowledge --wait # docs -> Meko knowledge base
 .\.venv\Scripts\python.exe manage.py resolve_tickets T001  # calls Claude + Meko
 .\.venv\Scripts\python.exe manage.py createsuperuser
@@ -145,15 +154,17 @@ the article helped.
 
 ## Benchmark: with and without shared memory
 
-The same agents run over all 36 tickets twice, each arm in its own fresh datapack with the same
-documentation. The only difference is Meko's shared memory. Results: [docs/benchmark.md](docs/benchmark.md).
+The same agents run over all 42 tickets (36 core, then 6 lookalikes) in both arms, each arm in its
+own fresh datapack with the same documentation. The only difference is Meko's shared memory.
+Results: [docs/benchmark.md](docs/benchmark.md). D1 and M1 ran before the lookalikes existed, so
+they cover the 36 core tickets; D2 and M2 cover all 42.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py benchmark_setup D1 --arm docs_only   # creates and seeds a datapack
 .\.venv\Scripts\python.exe manage.py benchmark_setup M1 --arm meko
 .\.venv\Scripts\python.exe manage.py benchmark D1                         # resumable; --limit N for batches
 .\.venv\Scripts\python.exe manage.py benchmark M1
-.\.venv\Scripts\python.exe manage.py benchmark_report D1 M1               # writes docs/benchmark.md
+.\.venv\Scripts\python.exe manage.py benchmark_report D1 D2 M1 M2         # writes docs/benchmark.md
 ```
 
 - **Grading:** each issue has ground-truth keywords in `data/tickets.json`. The agents never see them.
