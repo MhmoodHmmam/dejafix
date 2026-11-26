@@ -92,12 +92,17 @@ class GapStats:
 
 
 def gap_stats() -> GapStats:
-    by_status = {row["status"]: row["n"] for row in KnowledgeGap.objects.values("status").annotate(n=Count("id"))}
-    counts = KnowledgeGap.objects.aggregate(
-        awaiting=Count("id", filter=Q(status__in=[KnowledgeGap.Status.DRAFTED, KnowledgeGap.Status.NEEDS_AUTHOR])),
-        closed=Count("id", filter=Q(status=KnowledgeGap.Status.VERIFIED, kb_rank_after=1)),
+    """One query: on a remote database each query is a network round trip."""
+    rows = list(
+        KnowledgeGap.objects.values("status").annotate(n=Count("id"), ranked_first=Count("id", filter=Q(kb_rank_after=1)))
     )
-    return GapStats(by_status=by_status, awaiting_review=counts["awaiting"], closed_by_article=counts["closed"])
+    by_status = {row["status"]: row["n"] for row in rows}
+    ranked_first = {row["status"]: row["ranked_first"] for row in rows}
+    return GapStats(
+        by_status=by_status,
+        awaiting_review=by_status.get(KnowledgeGap.Status.DRAFTED, 0) + by_status.get(KnowledgeGap.Status.NEEDS_AUTHOR, 0),
+        closed_by_article=ranked_first.get(KnowledgeGap.Status.VERIFIED, 0),
+    )
 
 
 def latest_benchmark_pair() -> tuple[BenchmarkRun | None, BenchmarkRun | None]:

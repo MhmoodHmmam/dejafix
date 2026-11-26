@@ -314,8 +314,11 @@ class ArmSummary:
     cost_usd: float
 
 
-def summarize(run: BenchmarkRun, total: int) -> ArmSummary:
-    results = list(run.results.filter(error=""))
+def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResult] | None = None) -> ArmSummary:
+    """`all_results`: the run's results, errored ones included, if the caller already fetched them."""
+    if all_results is None:
+        all_results = list(run.results.all())
+    results = [result for result in all_results if not result.error]
     wave1 = [result for result in results if result.wave == 1]
     repeats = [result for result in results if result.wave == 2]
     injections = [result for result in results if result.injection]
@@ -330,7 +333,7 @@ def summarize(run: BenchmarkRun, total: int) -> ArmSummary:
         arm=run.arm,
         tickets=len(results),
         total=total,
-        errors=run.results.exclude(error="").count(),
+        errors=len(all_results) - len(results),
         correct=sum(result.correct for result in results),
         correct_wave1=sum(result.correct for result in wave1),
         wave1=len(wave1),
@@ -352,8 +355,12 @@ def summarize(run: BenchmarkRun, total: int) -> ArmSummary:
 
 
 def summaries_for(runs: Sequence[BenchmarkRun]) -> list[ArmSummary]:
+    """All runs' results in one query."""
     total = len(ground_truth().tickets)
-    return [summarize(run, total) for run in runs]
+    by_run: dict[int, list[BenchmarkResult]] = {run.pk: [] for run in runs}
+    for result in BenchmarkResult.objects.filter(run__in=runs):
+        by_run[result.run_id].append(result)
+    return [summarize(run, total, by_run[run.pk]) for run in runs]
 
 
 def calibration_for(run: BenchmarkRun):

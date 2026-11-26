@@ -15,6 +15,8 @@ from dejafix.meko import MekoSession
 from dejafix.tests.fake_llm import ScriptedLLM
 from dejafix.tests.fakes import TEST_DATAPACK_ID
 from dejafix.tests.stateful_meko import WeakSearch, build_stateful_meko
+from support import dashboard
+from support.benchmark import summaries_for
 from support.middleware import CONTENT_SECURITY_POLICY
 from support.models import AgentRun, BenchmarkResult, BenchmarkRun, KnowledgeGap, Resolution, Ticket
 from support.services import resolve_ticket
@@ -299,10 +301,32 @@ class BenchmarkAndDashboardTests(ViewTestCase):
         self.assertGreater(tickets.tokens_saved, 0)
         self.assertContains(page, "(50%)")
 
+    def test_gap_stats_count_awaiting_review_and_closed_by_article(self):
+        self.make_gap(query="q1", status=KnowledgeGap.Status.DRAFTED)
+        self.make_gap(query="q2", status=KnowledgeGap.Status.NEEDS_AUTHOR)
+        published = {"document_key": "kb/holiday-payouts.md"}
+        self.make_gap(query="q3", status=KnowledgeGap.Status.VERIFIED, kb_rank_after=1, **published)
+        self.make_gap(query="q4", status=KnowledgeGap.Status.VERIFIED, kb_rank_after=2, **published)
+        self.make_gap(query="q5", status=KnowledgeGap.Status.STILL_WEAK, kb_rank_after=1, **published)
+
+        stats = dashboard.gap_stats()
+
+        self.assertEqual((stats.awaiting_review, stats.closed_by_article), (2, 1))
+        self.assertEqual(stats.by_status[KnowledgeGap.Status.VERIFIED], 2)
+
+    def test_benchmark_summary_counts_errored_results_apart(self):
+        run = self.finished_run("M1", "meko", reused=2)
+        BenchmarkResult.objects.create(run=run, ticket_ref="T099", issue="payout", wave=2, error="MekoTimeout")
+
+        (summary,) = summaries_for([run])
+
+        self.assertEqual((summary.tickets, summary.errors), (4, 1))
+
     def test_dashboard_query_count_does_not_grow_with_data(self):
         self.client.get(reverse("support:dashboard"))  # warm the Meko quality cache
-        # session, user, ticket statuses, resolution sums, gap statuses, gap counts, benchmark runs
-        with self.assertNumQueries(7):
+        # On a remote Postgres every query is a network round trip (~140 ms), so keep them few.
+        # session, user, ticket statuses, resolution sums, gaps, benchmark runs
+        with self.assertNumQueries(6):
             self.client.get(reverse("support:dashboard"))
         for ref in ("T1", "T2", "T3"):
             self.resolved_ticket(ref)
@@ -310,8 +334,8 @@ class BenchmarkAndDashboardTests(ViewTestCase):
         self.finished_run("D1", "docs_only", reused=0)
         self.finished_run("M1", "meko", reused=2)
         self.client.get(reverse("support:dashboard"))
-        # + 2 benchmark runs x 2 queries each (results, failed count)
-        with self.assertNumQueries(11):
+        # + one query for both runs' results
+        with self.assertNumQueries(7):
             self.client.get(reverse("support:dashboard"))
 
     def test_meko_context_quality_is_cached_and_failure_shows_unavailable(self):

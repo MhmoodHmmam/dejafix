@@ -1,5 +1,7 @@
 # DejaFix: never solve the same ticket twice
 
+[![tests](https://github.com/MhmoodHmmam/dejafix/actions/workflows/tests.yml/badge.svg)](https://github.com/MhmoodHmmam/dejafix/actions/workflows/tests.yml)
+
 A multi-agent support team built on the [Meko Context Engine](https://mekodata.ai) for
 **ContextCon: Remember Everything**, Challenge 02 "Never Solve It Twice".
 
@@ -62,8 +64,16 @@ The datapack must be created in the portal: over MCP, `conversation_create` need
 and `datapack_create` needs a conversation.
 
 **Database (optional).** By default Django uses a local SQLite file. To keep the app's state in
-Postgres, such as a cluster Meko manages in the same datapack (`amp_cluster_create`), set the
-`DEJAFIX_DB_*` variables in `.env.example`. TLS is required. See
+a Postgres cluster that Meko manages in the same datapack, create it with your public IP, then
+migrate:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py provision_db --allow-cidr <your public IP>/32
+.\.venv\Scripts\python.exe manage.py migrate
+```
+
+`provision_db` writes the `DEJAFIX_DB_*` settings to `.env` and never prints the password. Any
+other Postgres works too: set the variables in `.env.example` yourself. TLS is required. See
 [docs/meko-usage.md](docs/meko-usage.md#postgres-amp-the-apps-own-database).
 
 ## Check the Meko connection

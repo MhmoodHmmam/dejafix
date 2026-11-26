@@ -309,3 +309,48 @@
   - [read] PyPI JSON for psycopg 3.3.8: release date and `requires_python`.
   - [knowledge] libpq `sslmode` values: `prefer` and `allow` can connect without encryption, `require` encrypts without checking the certificate, and `verify-full` also checks the host name.
   - [knowledge] Django docs, "Databases": `CONN_MAX_AGE` and `CONN_HEALTH_CHECKS`.
+
+## R8: reproducible Meko Postgres, CI and a faster dashboard (week 8)
+- **Decision, `manage.py provision_db`:**
+  - Week 7 created the cluster with one-off scripts, so nobody else could repeat it. The command does it from the repo as agent `dejafix-dba`, in one deduplicated Meko conversation.
+  - First run (`--allow-cidr` required): `amp_core_budget` (stop if under 0.5 vCPU is free), `amp_cluster_list` (stop if the name exists), `amp_cluster_create`, then `amp_compute_list` for the endpoint.
+  - The password (`secrets.token_urlsafe(32)`) is appended to `.env` before the create call. A failed create keeps it, and the retry reuses it.
+  - Later runs: `amp_cluster_get`, then `amp_compute_list`. Missing values are filled in, and nothing is created.
+  - `.env` is append-only, and existing values are never overwritten. The command refuses to start if `DEJAFIX_DB_*` is set without a cluster ID.
+  - The allow-list must be one public network with an explicit prefix, no wider than /24 (IPv6 /48). Private and reserved addresses are refused before any call.
+  - The password never appears in output or errors: Meko errors are redacted, and the gateway logs only error codes.
+  - The default `postgres` database is used: the cluster belongs to DejaFix alone. (Our own cluster keeps its `dejafix` database from week 7.)
+- **Decision, CI:**
+  - `.github/workflows/tests.yml` runs `check`, `makemigrations --check` and the suite on Python 3.14 on every push to `main` and on every pull request.
+  - It needs no secrets and gets a read-only token (`permissions: contents: read`, `persist-credentials: false`).
+  - `actions/checkout` v7.0.1 and `actions/setup-python` v7.1.0 are pinned to their commit SHAs, looked up with `gh api` from the actions' own repositories. A docs test fails on an unpinned `uses:` or on `secrets.`.
+- **Decision, dashboard on a remote database:**
+  - Measured on the Meko cluster:
+    - each query is a round trip of about 140 ms;
+    - the warm dashboard ran 11 queries in 1.5 s, nearly all of it database time;
+    - a cold load also waited 4.4 s for `selflearning_status` (cached for 5 minutes) and 1 s for a new TLS connection.
+  - Changes:
+    - `gap_stats` now uses 1 query instead of 2;
+    - `summaries_for` fetches all runs' results in 1 query, where it used 2 per run.
+  - Result: 7 queries, 0.98 s warm (from 1.52 s); the cold load fell from 5.55 s to 5.08 s.
+  - The query-count test was tightened (6 and 7, from 7 and 11) and failed before the change.
+  - New tests pin the gap counts and the benchmark error count. They pass on both the old and the new code, so the behaviour is unchanged.
+- **Rejected:**
+  - Detecting the IP inside the command: it would call a third-party service. The user passes it.
+  - Polling until the endpoint is up: it would need sleeps. A re-run fills the endpoint in instead.
+  - Caching the dashboard numbers: they change on every approval, and fewer queries was enough.
+  - Running the CI suite on Postgres: it would need a database secret in CI and the network.
+  - Week 7 had rejected a provisioning command as "runs once". That missed that judges and other teams need to repeat the setup.
+- **Live checks:**
+  - `provision_db` on our real `.env` found `dejafix-app` and its endpoint and wrote nothing (`.env` hash unchanged).
+  - The create path, run with an empty test env file, stopped at the budget check ("0 vCPU left"). Nothing was created or written.
+- **Sources:**
+  - [read] Meko tool schemas in `docs/meko-tools.json`:
+    - `amp_cluster_create`: allow-list no wider than /24 or /48, and no unspecified addresses;
+    - `amp_core_budget`, `amp_cluster_get`, `amp_compute_list`.
+  - [read] GitHub Docs, "Secure use reference":
+    - "Using third-party actions": pin to a full-length commit SHA;
+    - "Principle of least privilege": read-only `GITHUB_TOKEN`.
+  - [source] Python 3.14 `ipaddress.py`: `ip_network(strict=True)` and `is_global`.
+  - [source] Django 5.2.19 `test/testcases.py`: `assertNumQueries`.
+  - [knowledge] GitHub status badge URL format (`.../actions/workflows/<file>/badge.svg`), checked after the push.

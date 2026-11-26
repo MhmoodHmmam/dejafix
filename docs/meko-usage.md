@@ -58,20 +58,26 @@ All calls go through one gateway (`dejafix/meko/gateway.py`). It sets `agent_id`
 DejaFix's Django state (tickets, resolutions, agent runs, gaps, benchmark results) can live in a
 Postgres cluster that Meko manages in the same datapack. Setting `DEJAFIX_DB_HOST` switches Django
 to it; without it, a local SQLite file is used (see [config/database.py](../config/database.py)).
-The cluster was provisioned once with these tools:
+`manage.py provision_db --allow-cidr <your IP>/32` creates the cluster and writes its settings to
+`.env` (`support/management/commands/provision_db.py`, agent `dejafix-dba`). Run again, it shows the
+cluster and fills in any missing endpoint settings, without creating a second one:
 
 | Tool | What for |
 |---|---|
-| `amp_core_budget` | Checked the free tier first: 0.5 vCPU available, none used. |
-| `amp_cluster_create` | Created `dejafix-app` with a read-write endpoint at the free-tier size. The endpoint is public, so access is limited to one IP (`/32`). We sent our own random password, stored in `.env` only. |
-| `amp_compute_list` | Found the endpoint's address and login user. |
+| `amp_core_budget` | Checks that the free tier still has the 0.5 vCPU the endpoint needs. Otherwise nothing is created. |
+| `amp_cluster_list` | Refuses to create a second cluster with the same name. |
+| `amp_cluster_create` | Creates `dejafix-app` with a read-write endpoint at the free-tier size. The endpoint is public, so access is limited to the address you pass (no wider than /24). We send our own random password, written to `.env` before the call and never printed. |
+| `amp_cluster_get` | On later runs: the existing cluster and its default branch. |
+| `amp_compute_list` | The endpoint's address and login user, written to `.env`. |
 
 Django connects with TLS required (`sslmode=require`, or a stricter mode), a 10 s connect timeout
 and health-checked persistent connections. A half-configured database stops the app at startup
 instead of silently falling back to SQLite.
 
 Checked live: the whole test suite passed on this cluster (184 tests, 11 minutes, as every query
-crosses the network). The staff pages load in about 1 to 2 seconds from a home connection.
+crosses the network). Each query costs a round trip of about 140 ms, so the dashboard uses 7
+queries (it used 11) and loads in about 1 second. The first load after 5 minutes also waits about
+4 seconds for Meko's live context quality, which is then cached.
 `manage.py test` stays on SQLite unless `DEJAFIX_TEST_ON_POSTGRES=1`.
 
 ## How we use Meko's identities
@@ -121,4 +127,4 @@ These were checked against the live service and are in the [decision log](decisi
 | `datapack_update`, `datapack_delete`, `datapack_search`, `datapack_describe` | One datapack per environment, plus one per benchmark arm. We never delete anything. |
 | `artifact_get` | Case files are written for audit. They are read in the portal, not by the agents. |
 | `project_create` and the other `project_*` tools | One datapack is enough for one support team. Projects would group several teams. |
-| `amp_branch_create` and the other `amp_*` tools | One cluster and one endpoint are enough. Copy-on-write branches would suit the benchmark (one branch per arm), but that would mean re-running it. |
+| `amp_branch_create`, `amp_compute_create` and the other `amp_*` tools | One cluster and one endpoint are enough. Copy-on-write branches would suit the benchmark (one branch per arm), but that would mean re-running it. |

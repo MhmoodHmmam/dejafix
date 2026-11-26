@@ -17,6 +17,8 @@ CODE_DIRS = [ROOT / "dejafix", ROOT / "support"]
 MEKO_USAGE = ROOT / "docs" / "meko-usage.md"
 DEMO_SCRIPT = ROOT / "docs" / "demo-script.md"
 VIDEO_LIMIT_SECONDS = 5 * 60
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
+USES_LINE = re.compile(r"uses:\s*([\w./-]+)@(\S+)")
 
 MANAGE_COMMAND = re.compile(r"manage\.py\s+([a-z_]+)")
 MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -66,6 +68,17 @@ class DocsTests(SimpleTestCase):
         documented = tools_in_tables(MEKO_USAGE.read_text(encoding="utf-8"))
         self.assertTrue(called)
         self.assertEqual(called - documented, set())
+
+    def test_ci_workflow_runs_suite_with_pinned_actions_and_no_secrets(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        actions = USES_LINE.findall(workflow)
+        self.assertTrue(actions)
+        for action, ref in actions:
+            with self.subTest(action=action):
+                self.assertRegex(ref, r"^[0-9a-f]{40}$", "pin actions to a full commit SHA")
+        self.assertIn("python manage.py test", workflow)
+        self.assertRegex(workflow, r"permissions:\s*\n\s*contents: read")
+        self.assertNotIn("secrets.", workflow)
 
     def test_demo_script_fits_the_video_limit(self):
         scenes = SCENE_END.findall(DEMO_SCRIPT.read_text(encoding="utf-8"))

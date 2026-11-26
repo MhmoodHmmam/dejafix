@@ -11,6 +11,8 @@ memory in Meko and learn from human decisions.
   T033 are closed, and T017 is escalated. The script uses **T006 → T018** (reuse) and
   **T010 → T023** (correction).
 - Each **Run the agents** click takes 15 to 30 seconds. Cut the wait in editing.
+- On Meko Postgres, open the dashboard once before recording: the first load waits about
+  4 seconds for Meko's context quality, then it is cached for 5 minutes.
 - Do one full practice run first. A practice run uses up its tickets, so then record with
   another pair, for example T008 → T021 and T003 → T015.
 - Cost: about $0.04 per new solve and $0.02 per reuse.
