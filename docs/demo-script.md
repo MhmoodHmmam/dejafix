@@ -8,8 +8,8 @@ memory in Meko and learn from human decisions.
 - Start the server: `.\.venv\Scripts\python.exe manage.py runserver --insecure`, then log in at
   http://127.0.0.1:8000/ as a staff user.
 - Use tickets that haven't been run yet. In the local database these are already used: T001, T002,
-  T003, T005, T006, T007, T008, T010, T013, T014, T015, T018, T019, T021, T023, T025 and T033
-  (resolved or reviewed), and T017 (escalated). Fresh pairs for a live demo: **T009 → T022** (an
+  T003, T005, T006, T007, T008, T010, T013, T014, T015, T018, T019, T021, T023, T025, T030 and T033
+  (resolved or reviewed), and T017 (escalated). T006's fix is retired. Fresh pairs for a live demo: **T009 → T022** (an
   expired payment link) and **T011 → T024** (a payout short by the currency fee).
 - **Run the agents** returns at once. The page shows each agent step as it finishes (about 15 to
   40 seconds in all), then the result: worth showing for a few seconds before cutting the wait.
@@ -19,6 +19,8 @@ memory in Meko and learn from human decisions.
 - Recorded on 2026-11-28 with background runs: T007 → T019 (reuse, with the real progress panel
   captured once a second and shown at 5× speed), and on 2026-11-27 T003 → T015 (correction).
   T019 used 2,811 tokens against 5,567 for T007 (−50%), and T015 read the correction on T003.
+  On 2026-11-28 T006's fix was retired after a product update (`data/kb-updates/`), and T030
+  was solved from the docs and the reason (5,909 tokens), then approved.
 
 ## Scenes
 
@@ -78,15 +80,20 @@ the fix, which now names lp_test_, lp_live_ and the base URL.
 
 If the first fix already names both prefixes, approve it instead and say that the docs were enough.
 
-### 3:17–3:39 · The shared memory
+### 3:17–3:57 · The shared memory, and correcting it
 
-**Show:** `/memory/`: the counters, the T007 fix with its reuse on T019 and the tokens saved, and
-the T003 correction.
+**Show:** `/memory/`: the counters, then T006's fix (approved, reused on T018). Open **Retire this
+fix**, type the reason, retire it. Then the "Retired fixes" section, T018's warning, and T030's
+Retrieve step (`retired_fixes_skipped`, `learnings: 1`) and its fix.
 
-> Every fix a human approved, who approved it, every ticket that reused it and what that saved,
-> and every correction the resolvers learn from. All of it lives in Meko.
+> Every fix a human approved, every reuse and the tokens it saved. But products change. T006's
+> fix was right when it was approved; after the December update it's outdated. So a person
+> retires it, with a reason. No resolver reuses it again, the reason is stored in Meko as a
+> correction, and T018, which already reused it, is flagged for a second look. The next ticket
+> with the same problem, T030, skips the retired fix, reads the reason, and is solved with the
+> new steps. Once approved, that's the new shared fix.
 
-### 3:39–3:59 · Closing its own knowledge gaps
+### 3:57–4:13 · Closing its own knowledge gaps
 
 **Show:** `/gaps/` → a verified gap → its before and after meters.
 
@@ -94,7 +101,7 @@ the T003 correction.
 > badly, and a librarian agent drafts an article from approved fixes. After a human publishes
 > it, Meko replays the search: here it went from mid to high, and the article ranks first.
 
-### 3:59–4:33 · Does shared memory help? The benchmark
+### 4:13–4:43 · Does shared memory help? The benchmark
 
 **Show:** the top table of [benchmark.md](benchmark.md) (all four runs), then `/benchmark/` and
 its lookalike rows (T037–T042).
@@ -105,7 +112,7 @@ its lookalike rows (T037–T042).
 > worded like one problem but caused by another: all six right with Meko, and none reused the
 > wrong fix. Both prompt-injection tickets were escalated without storing anything.
 
-### 4:33–4:47 · Close
+### 4:43–4:56 · Close
 
 **Show:** [meko-usage.md](meko-usage.md) on GitHub, or a ticket's trace in the Meko portal.
 

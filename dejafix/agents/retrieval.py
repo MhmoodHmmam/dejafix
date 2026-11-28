@@ -58,6 +58,7 @@ class Retrieval:
     match_quality: str = "unknown"
     tokens_saved: int = 0
     retired_skipped: list[str] = field(default_factory=list)
+    docs_searched_with_retired_problem: bool = False
 
     @property
     def best_fix(self) -> ApprovedFix | None:
@@ -67,6 +68,8 @@ class Retrieval:
     def summary(self) -> dict[str, Any]:
         best = self.best_fix
         retired = {"retired_fixes_skipped": self.retired_skipped} if self.retired_skipped else {}
+        if self.docs_searched_with_retired_problem:
+            retired["docs_searched_with_retired_problem"] = True
         return {
             "approved_fixes": [{"memory_id": fix.memory_id, "score": round(fix.score, 3)} for fix in self.approved_fixes],
             "reuse_candidate": best.memory_id if best else None,
@@ -144,6 +147,7 @@ async def retrieve(
 
     knowledge = await meko.call("knowledgebase_search", query=signature, limit=KB_SEARCH_LIMIT)
     hits = knowledge.get("results") if isinstance(knowledge, Mapping) else None
+    retired_problems: list[str] = []
     for hit in _dicts(hits):
         text = _text_of(hit)
         filters = hit.get("metadata_filters") if isinstance(hit.get("metadata_filters"), Mapping) else {}
@@ -153,11 +157,31 @@ async def retrieve(
                 if memory_id in retired_fix_ids:
                     if memory_id not in retrieval.retired_skipped:
                         retrieval.retired_skipped.append(memory_id)
+                        retired_problems.append(parse_fix_memory(text).signature)
                 elif memory_id:
                     retrieval.approved_fixes.append(ApprovedFix(memory_id, text, _score(hit, "rerank_score")))
         elif text and text not in retrieval.passages:
             retrieval.passages.append(text)
 
+    if retired_problems and not retrieval.passages:
+        await _docs_for_retired_problem(meko, retrieval, retired_problems[0])
+
     retrieval.passages = retrieval.passages[:MAX_PASSAGES]
     retrieval.learnings = retrieval.learnings[:MAX_LEARNINGS]
     return retrieval
+
+
+async def _docs_for_retired_problem(meko: MekoGateway, retrieval: Retrieval, problem: str) -> None:
+    """A retired fix matched this ticket, but no documentation did.
+
+    Its steps are wrong or outdated, yet its problem line still names the problem (live, week 18:
+    a new wording matched only the retired fix, and the resolver got no documentation at all). So
+    the docs are searched once more with that line. Only documentation is kept, never a fix."""
+    knowledge = await meko.call("knowledgebase_search", query=problem, limit=KB_SEARCH_LIMIT)
+    hits = knowledge.get("results") if isinstance(knowledge, Mapping) else None
+    for hit in _dicts(hits):
+        filters = hit.get("metadata_filters") if isinstance(hit.get("metadata_filters"), Mapping) else {}
+        text = _text_of(hit)
+        if filters.get("source") != PROMOTED_SOURCE and text and text not in retrieval.passages:
+            retrieval.passages.append(text)
+    retrieval.docs_searched_with_retired_problem = True

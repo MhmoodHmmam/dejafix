@@ -623,3 +623,32 @@
   - [read] `docs/meko-tools.json`: `memory_promote` ("one-way"), `memory_update`, `memory_delete_by_id`, `knowledgebase_delete_document`.
   - [source] Django 5.2.19: `QuerySet.update` returns the number of rows matched; `CheckConstraint(condition=...)`.
   - [knowledge] OWASP Top 10:2025, A01 (permission per action) and A06 (rules enforced on the server).
+
+## R17: correcting memory, live in the app, the recorded demo and the video (week 18)
+- **Live database first:** migration 0006 had not been applied to the app's Meko Postgres, so ticket and memory pages would have failed. It was applied: 4 new columns and a constraint every row met. All 7 staff pages then answered 200.
+- **Scenario, in the app's own datapack:**
+  - A product update was published to the knowledge base (`data/kb-updates/billing-2026-12.md`, uploaded with `seed_knowledge --dir data/kb-updates`). It describes Bulk actions > Reissue with tax.
+  - The file is not in `data/kb`, so benchmark datapacks never get it. A test checks this.
+  - T006's fix (credit-note each invoice by hand), which T018 had reused, was retired with a reason through the real form.
+  - T030 (same problem) was then run and approved.
+- **Found live, and fixed:** T030's first run was escalated (confidence 0.30, "no documentation matched").
+  - Its wording ("VAT not calculated … EU business customers") matched only the retired fix (0.95), so once that was skipped, no documentation came back from either search.
+  - Searching with the retired fix's own problem line brought back "Tax on invoices" at 0.978.
+  - Decision: when a skipped retired fix was the only match and there are no passages, `retrieve()` searches the knowledge base once more with that problem line. It keeps documentation only, never the fix, and records `docs_searched_with_retired_problem`. A test reproduces the case.
+  - T030 was then reopened as failed (with that reason) and run again through the normal retry path.
+  - On the re-run, it found the passage, read the reason, applied it (`corrections_applied`), and the reviewer agent passed it at confidence 0.85 (5,909 tokens). It was approved and is now the shared fix.
+  - Its Meko trace turns use the same seeds as the first run, so Meko may keep the first run's turns. The app keeps the second.
+- **Recorded demo:** `data/demo.json` re-exported (338 objects). It has the retired fix with its reason and case file, T018 flagged, and T030 with `retired_fixes_skipped`. Retirements are attributed to `demo-lead`, and the hygiene test still passes.
+- **CI:** the README demo job now also checks "Retired fixes" on `/memory/` and the warning on T018.
+- **Video v4 (4:56):**
+  - A 40-second scene (shared memory, retire, T018 flagged, T030 solved) replaces the 22-second memory scene. Every frame is a screenshot of the live app.
+  - The gaps, benchmark and close scenes play slightly faster (`scene(..., designed)`), and the captions were recalculated.
+  - `narration.md`, `dejafix-demo.srt` and `docs/demo-script.md` were updated, and the README tour has a fifth image.
+- **Rejected:**
+  - Adding a ticket to `data/tickets.json` for the demo: it would change the benchmark's dataset.
+  - Editing `data/kb/billing.md`: it would change the docs every past benchmark run was measured against.
+- **Tests:** +4: the demo's retirement data, its pages without network, the update kept apart from benchmark docs, and the docs re-search. 289 in all.
+- **Sources:**
+  - [read] Live replies: `knowledgebase_search` for T030's signature (1 hit, the retired fix) and for the old problem line (the doc at 0.978).
+  - [read] `showmigrations` on the live database.
+  - [source] `seed_knowledge.py`: `DEFAULT_DIR = data/kb`, non-recursive `glob("*")`; `benchmark_setup` calls it without `--dir`.

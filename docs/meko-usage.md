@@ -102,6 +102,8 @@ queries (it used 11) and loads in about 1 second. The first load after 5 minutes
   datapack, `memory_update` and `memory_delete_by_id` answer `memory_is_promoted` for a promoted
   memory ("not yet mutable through MCP", GH #314), and `knowledgebase_delete_document` doesn't find
   it. So DejaFix records the retirement and `retrieve()` skips that memory ID in every search.
+  When a skipped fix was the only match, the knowledge base is searched once more with its
+  problem line, so the resolver still gets the documentation for that problem (week 18).
 - **Two resolvers, one memory.** In the benchmark, `dejafix-resolver-a` and `dejafix-resolver-b`
   take turns. In 7 of the 17 reuses, the fix had been approved on a ticket the other resolver solved.
 

@@ -19,7 +19,7 @@ DejaFix's Claude agents share one memory in Meko:
 
 ## Tour in 60 seconds
 
-All four screenshots are the running app, with real Claude and Meko runs from 2026-11-27.
+All five screenshots are the running app, with real Claude and Meko runs from 2026-11-27 and 2026-11-28.
 
 **A repeat problem, solved from shared memory.** T021 reused the fix a human approved on T008:
 no reviewer agent, no human review, 2,677 tokens instead of 5,011. The pipeline strip shows each
@@ -31,6 +31,12 @@ stage, and the purple card links back to where the fix was approved.
 approved it, which tickets reused it and the tokens each reuse saved, plus every human correction.
 
 ![The Shared memory page: counters for fixes, reuses, tokens saved and corrections, then each approved fix with the tickets that reused it](docs/images/shared-memory.png)
+
+**Memory that can be corrected.** After a product update, a person retired T006's fix with a
+reason. No resolver reuses it again, T018 (which had reused it) is flagged for a second look,
+and the next ticket with the problem, T030, read the reason and was solved with the new steps.
+
+![The Retired fixes section: T006's fix struck through, the reason it was retired, and T018 listed as a ticket to check](docs/images/retired-fix.png)
 
 **Every step explains itself.** Each agent step is a turn in a Meko conversation, with its
 reasoning, tokens and decision. Here T015's resolver read one human correction (`learnings: 1`)

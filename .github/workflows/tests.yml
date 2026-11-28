@@ -89,6 +89,8 @@ jobs:
           check /tickets/ "Customer names broken in CSV export"
           check /tickets/T009/ "CLAUDE_API_KEY and MEKO_API_KEY"
           check /memory/ "Approved fixes"
+          check /memory/ "Retired fixes"
+          check /tickets/T018/ "Reused a retired fix"
           check /gaps/ "Knowledge gaps"
           check /benchmark/ "Correct, first occurrences and repeats"
           echo "Demo pages served from a fresh database with no API keys."

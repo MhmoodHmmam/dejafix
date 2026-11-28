@@ -51,6 +51,21 @@ class RetireFixTests(ViewTestCase):
         self.assertIsNone(retrieve["reuse_candidate"])
         self.assertEqual(retrieve["retired_fixes_skipped"], [resolution.promoted_memory_id])
 
+    def test_docs_are_searched_again_with_the_retired_fix_problem_line(self):
+        # Live, week 18: T030's wording matched only the retired fix, so the resolver got no
+        # documentation at all. The retired steps are wrong, but its problem line still names the
+        # problem, so retrieval searches the docs with it (docs only, never the fix itself).
+        self.retire(self.shared_fix())
+        self.llm.signature = "source ticket"  # matches the retired fix's text, no documentation
+        self.llm.calls.clear()
+        ticket = self.resolved_ticket("T3", body="My Saturday sales have not arrived.")
+        retrieve = AgentRun.objects.get(ticket=ticket, step="retrieve").decision
+        self.assertEqual(retrieve["passages"], 1)
+        self.assertTrue(retrieve["docs_searched_with_retired_problem"])
+        solve_prompt = next(call.prompt for call in self.llm.calls if call.schema == "ProposedFix")
+        self.assertIn("T+2 business days", solve_prompt)
+        self.assertNotIn("Source ticket: T1", solve_prompt)  # the retired fix itself stays out
+
     def test_the_reason_becomes_a_learning_the_next_resolver_reads(self):
         self.retire(self.shared_fix())
         learning = next(m for m in self.world.memories if m.text.startswith(CORRECTION_HEADER))

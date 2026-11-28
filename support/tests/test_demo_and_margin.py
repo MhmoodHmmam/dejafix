@@ -17,13 +17,14 @@ from django.core.cache import cache
 from django.core.management import CommandError, call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils.html import escape
 
 from dejafix.bench import BenchTicket, GroundTruth, MarginRow, reuse_margin
 from dejafix.meko import MekoSession
 from dejafix.tests.fakes import TEST_DATAPACK_ID
 from dejafix.tests.stateful_meko import Memory, build_stateful_meko
 from support.management.commands import reuse_margin as reuse_margin_command
-from support.models import AgentRun, BenchmarkResult, BenchmarkRun, KnowledgeGap, Ticket
+from support.models import AgentRun, BenchmarkResult, BenchmarkRun, KnowledgeGap, Resolution, Ticket
 
 DEMO = Path(settings.BASE_DIR) / "data" / "demo.json"
 NO_KEYS = {"MEKO_API_KEY": "", "ANTHROPIC_API_KEY": ""}
@@ -96,6 +97,52 @@ class DemoModeTests(TestCase):
         self.assertContains(response, "CLAUDE_API_KEY and MEKO_API_KEY", status_code=503)
         ticket.refresh_from_db()
         self.assertEqual((ticket.status, ticket.runs.count()), (Ticket.Status.NEW, 0))
+
+
+@override_settings(**NO_KEYS)
+class DemoRetirementTests(TestCase):
+    """Week 18: the recorded demo shows shared memory being corrected, not only growing."""
+
+    def setUp(self):
+        cache.clear()
+        call_command("load_demo", stdout=StringIO())
+        self.client.force_login(get_user_model().objects.create_superuser("judge", password="unused-in-tests"))
+
+    def test_demo_has_a_retired_fix_with_its_reason_and_a_fix_that_replaced_it(self):
+        retired = Resolution.objects.get(retired_at__isnull=False)
+        self.assertEqual(retired.ticket.external_id, "T006")
+        self.assertTrue(retired.retirement_note and retired.retirement_case_file_hash)
+        self.assertEqual(retired.retired_by.get_username(), "demo-lead")
+        reused = Resolution.objects.filter(reused_memory_id=retired.promoted_memory_id)
+        self.assertEqual([r.ticket.external_id for r in reused], ["T018"])
+        replacement = Resolution.objects.get(ticket__external_id="T030")
+        self.assertEqual((replacement.source, replacement.review_status), ("new", "approved"))
+        self.assertTrue(replacement.promoted_memory_id)
+        retrieve = AgentRun.objects.get(ticket=replacement.ticket, step="retrieve").decision
+        self.assertEqual(retrieve["retired_fixes_skipped"], [retired.promoted_memory_id])
+
+    def test_retirement_pages_render_without_any_meko_or_claude_call(self):
+        reason = Resolution.objects.get(retired_at__isnull=False).retirement_note
+        forbidden = mock.Mock(side_effect=AssertionError("no network call in demo mode"))
+        with mock.patch("httpx2.AsyncClient", forbidden), mock.patch("anthropic.AsyncAnthropic", forbidden),              mock.patch.object(MekoSession, "__aenter__", forbidden):
+            memory_page = self.client.get("/memory/")
+            self.assertContains(memory_page, "Retired fixes")
+            self.assertContains(memory_page, escape(reason))  # the reason names menus with ">"
+            self.assertNotContains(memory_page, "Retire this fix")  # no keys, so no retire form
+            self.assertContains(self.client.get(reverse("support:ticket_detail", args=["T018"])), "Reused a retired fix")
+
+
+class DocsUpdateTests(SimpleTestCase):
+    def test_the_product_update_is_kept_apart_from_the_benchmark_docs(self):
+        from support.management.commands.seed_knowledge import DEFAULT_DIR
+
+        base = Path(settings.BASE_DIR)
+        update = base / "data" / "kb-updates" / "billing-2026-12.md"
+        self.assertTrue(update.is_file())
+        # benchmark_setup seeds every run's datapack from DEFAULT_DIR, which must not include the update
+        self.assertEqual(DEFAULT_DIR, Path("data") / "kb")
+        self.assertNotIn(update.name, [path.name for path in (base / DEFAULT_DIR).glob("*")])
+        self.assertIn("Reissue with tax", update.read_text(encoding="utf-8"))
 
 
 class ReuseMarginLogicTests(SimpleTestCase):

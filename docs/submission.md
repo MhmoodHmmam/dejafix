@@ -72,8 +72,9 @@ DejaFix calls 23 Meko tools; [meko-usage.md](meko-usage.md) lists each one with 
 - Human judgment, not the model, decides what becomes shared memory. A correction changes what the
   next agent does, and the reviewer escalates a fix that ignores one.
 - Shared memory can be corrected, not only grown: a person retires a fix that turned out wrong or
-  outdated, with a reason. Live: T019 had reused T007's fix; after it was retired, T020 (the same
-  problem) skipped it, read the reason and wrote a fix that follows it, ready for a human to approve.
+  outdated, with a reason. Live, after a product update: T006's fix was retired, T018 (which had
+  reused it) was flagged, and T030 (the same problem) skipped it, read the reason, and was solved
+  with the new steps and approved. It is in the recorded demo and the video.
 - Safety held in every run: no fix was reused for another issue, both prompt-injection tickets were
   escalated with nothing stored, and lookalike tickets reused the fix for their real problem.
 
@@ -84,7 +85,7 @@ DejaFix calls 23 Meko tools; [meko-usage.md](meko-usage.md) lists each one with 
   themes, works without JavaScript, strict Content-Security-Policy.
 - Agents run in the background: the ticket page shows each real step as it finishes, a ticket
   can't be started twice, and login is throttled.
-- 285 tests on Python 3.12, 3.13 and 3.14, run by GitHub Actions on every push against an in-process fake of Meko's MCP server; a second job runs the README's demo steps on a fresh database and checks the pages over HTTP.
+- 289 tests on Python 3.12, 3.13 and 3.14, run by GitHub Actions on every push against an in-process fake of Meko's MCP server; a second job runs the README's demo steps on a fresh database and checks the pages over HTTP.
 - A final OWASP Top 10 review fixed five findings (two race conditions, an unhandled upload error,
   unvalidated values written to `.env`, a stale publish) and now requires a written reason to approve
   a fix the reviewer agent escalated.
