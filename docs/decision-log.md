@@ -555,3 +555,25 @@
   - [source] Django 5.2.19: `django/db/__init__.py` (`close_old_connections`), `django/contrib/auth/views.py` (`LoginView.form_invalid` and `form_valid`), and `django/test/testcases.py` (`captureOnCommitCallbacks`).
   - [knowledge] MDN: `fetch` from the same origin under `default-src 'self'`, and `<meta http-equiv="refresh">` inside `<noscript>`.
   - [knowledge] RFC 6585: 429 Too Many Requests.
+
+## R15: works the first time for any judge (week 16)
+- **Measured first:**
+  - The pinned packages need Python ≥ 3.11 (`httpx2`); the others need ≥ 3.10. The README said 3.14 only.
+  - A clean clone on Windows with Python 3.12.0, following "Try it without API keys" word for word, installed in 51 s and set up in 10 s (`migrate`, `load_demo`, `createsuperuser`). It then served every page; the six staff pages, the static files and the CSP header were checked over HTTP.
+  - The full suite (273 tests) passed on 3.12 with no change.
+- **Decision, Python support:** the README says "Python 3.12 or newer" (tested on 3.12, 3.13 and 3.14). 3.11 would install, but it is not tested, so it is not claimed.
+- **Decision, CI:**
+  - The test job runs a matrix of 3.12, 3.13 and 3.14 with `fail-fast: false`.
+  - A new `demo-smoke` job on 3.12 runs the README's steps on a fresh SQLite database and starts `runserver`. It checks the CSP header, `app.css` and `app.js`, the redirect to login, and a real login through the form with its CSRF token. It then checks six pages for their key text, including the "no keys" message.
+  - The secret key and staff password are generated in the run and masked. No repository secret is used, and the token stays read-only.
+  - The job's script was run locally against the clean clone before the push.
+- **Decision, docs test:** the README's minimum version must be the first in the matrix. Every `manage.py` command in "Try it without API keys" must also run in `demo-smoke`, so the instructions and the check can't drift apart.
+  - The existing test that bans the text `secrets.` (to catch `${{ secrets.X }}`) was kept. The workflow uses `import secrets as s` instead.
+- **Decision, recorded demo refreshed:** `data/demo.json` now includes the runs filmed for the video (T007, T019, T005). That is 333 objects, still without emails or keys (the hygiene test passes).
+- **README:** a full Linux/macOS command block next to the PowerShell one, the time to set up, and a note that CI runs exactly these steps.
+- **Rejected:** a Dockerfile. It adds a second way to run the app to keep in sync, and the plain steps take about a minute.
+- **Tests:** +1 (docs). 274 in all.
+- **Sources:**
+  - [source] `Requires-Python` in the installed metadata of Django, anthropic, mcp, anyio, httpx2, pydantic and psycopg.
+  - [read] The local clean-clone run in this session (timings and HTTP results above).
+  - [knowledge] GitHub Actions `strategy.matrix`, `GITHUB_ENV` and `::add-mask::`.

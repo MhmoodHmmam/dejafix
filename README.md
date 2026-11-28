@@ -92,7 +92,11 @@ correction was followed; 2 of 3 next tickets were fully right, and the third (T0
 
 The recorded runs, with every agent step, the shared memory, the knowledge gaps and the benchmark,
 load into a fresh SQLite database, so you can browse the whole app with no Anthropic or Meko account.
-The **Run the agents** button then explains which keys are missing.
+The **Run the agents** button then explains which keys are missing. You need Python 3.12 or newer
+(tested on 3.12, 3.13 and 3.14); setup takes about a minute. GitHub Actions runs exactly these steps
+on every push, then checks the pages over HTTP.
+
+Windows (PowerShell):
 
 ```powershell
 python -m venv .venv
@@ -103,9 +107,22 @@ python -m venv .venv
 .\.venv\Scripts\python.exe manage.py runserver --insecure
 ```
 
+Linux or macOS:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py load_demo
+.venv/bin/python manage.py createsuperuser
+.venv/bin/python manage.py runserver --insecure
+```
+
+Then open http://127.0.0.1:8000/ and log in.
+
 ## Setup (Windows PowerShell)
 
-You need Python 3.14, an [Anthropic API key](https://console.anthropic.com/) and a
+You need Python 3.12 or newer, an [Anthropic API key](https://console.anthropic.com/) and a
 [Meko Cloud](https://cloud.mekodata.ai) account. The commands below are for PowerShell; on Linux
 or macOS use `.venv/bin/python` instead of `.\.venv\Scripts\python.exe`.
 

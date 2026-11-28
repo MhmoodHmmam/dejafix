@@ -135,3 +135,22 @@ class DocsTests(SimpleTestCase):
         for label in README_RESULT_ROWS:
             with self.subTest(row=label):
                 self.assertEqual(submission[label], readme[label])
+
+    def test_ci_covers_every_supported_python_and_runs_the_readme_demo(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        minimum = re.search(r"Python (3\.\d+) or newer", readme)
+        self.assertIsNotNone(minimum, "the README states the minimum Python version")
+        matrix = re.search(r"python: \[([^\]]+)\]", workflow)
+        self.assertIsNotNone(matrix)
+        versions = [version.strip().strip('"') for version in matrix.group(1).split(",")]
+        self.assertEqual(versions[0], minimum.group(1))
+        self.assertIn("3.14", versions)
+        section = readme.split("## Try it without API keys", 1)[1].split("\n## ", 1)[0]
+        commands = set(re.findall(r"manage\.py (\w+)", section))
+        self.assertTrue({"migrate", "load_demo", "createsuperuser", "runserver"} <= commands)
+        smoke = workflow.split("demo-smoke:", 1)[1]
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIn(f"manage.py {command}", smoke)
+        self.assertNotIn("secrets.", smoke)

@@ -5,14 +5,20 @@ on:
     branches: [main]
   pull_request:
 
-# Read-only token: the job only checks out and tests the code.
+# Read-only token: the jobs only check out, test and run the code.
 permissions:
   contents: read
 
 jobs:
   test:
+    name: tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported version first: the README states it, and a docs test checks both.
+        python: ["3.12", "3.13", "3.14"]
     steps:
       # Actions are pinned to commit SHAs, not movable tags (supply chain).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,10 +26,69 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python }}
           cache: pip
       - run: python -m pip install -r requirements.txt
       # No secrets needed: the tests use an in-process fake of Meko, a fake Claude and SQLite.
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test
+
+  # The README's "Try it without API keys" steps, as a judge would run them: a fresh SQLite
+  # database, the recorded demo, a real server, and HTTP checks. It uses no API keys and no stored secrets:
+  # the secret key and staff password below are generated for this run and masked.
+  demo-smoke:
+    name: README demo, fresh database, real server
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: python manage.py migrate
+      - run: python manage.py load_demo
+      - name: Throwaway secret key and staff password for this run only
+        run: |
+          key="$(python -c 'import secrets as s; print(s.token_urlsafe(50))')"
+          password="$(python -c 'import secrets as s; print(s.token_urlsafe(24))')"
+          echo "::add-mask::$key"
+          echo "::add-mask::$password"
+          echo "DJANGO_SECRET_KEY=$key" >> "$GITHUB_ENV"
+          echo "DJANGO_SUPERUSER_PASSWORD=$password" >> "$GITHUB_ENV"
+      - run: python manage.py createsuperuser --noinput --username judge --email judge@example.test
+      - name: Serve the app and check the pages over HTTP
+        run: |
+          python manage.py runserver --insecure --noreload 127.0.0.1:8000 > server.log 2>&1 &
+          base=http://127.0.0.1:8000
+          for attempt in $(seq 1 30); do curl -sf -o /dev/null "$base/login/" && break; sleep 1; done
+          fail() { echo "::error::$1"; cat server.log; exit 1; }
+
+          curl -sfI "$base/login/" | grep -qi '^content-security-policy:' || fail "no CSP header on /login/"
+          curl -sf -o /dev/null "$base/static/support/app.css" || fail "app.css is not served"
+          curl -sf -o /dev/null "$base/static/support/app.js" || fail "app.js is not served"
+          [ "$(curl -s -o /dev/null -w '%{http_code}' "$base/")" = "302" ] || fail "an anonymous visitor is not sent to login"
+
+          # Log in through the real form (CSRF token included), as a person would.
+          curl -sf -c jar -b jar "$base/login/" -o login.html
+          token="$(grep -o 'name="csrfmiddlewaretoken" value="[^"]*"' login.html | sed 's/.*value="//; s/"$//')"
+          status="$(curl -s -c jar -b jar -o /dev/null -w '%{http_code}' -X POST "$base/login/" \
+            --data-urlencode "csrfmiddlewaretoken=$token" --data-urlencode "username=judge" \
+            --data-urlencode "password=$DJANGO_SUPERUSER_PASSWORD")"
+          [ "$status" = "302" ] || fail "login answered $status"
+
+          check() {
+            curl -sf -b jar "$base$1" -o page.html || fail "$1 did not answer 200"
+            grep -q "$2" page.html || fail "$1 does not contain: $2"
+          }
+          check / "Never solve the same ticket twice"
+          check /tickets/ "Customer names broken in CSV export"
+          check /tickets/T009/ "CLAUDE_API_KEY and MEKO_API_KEY"
+          check /memory/ "Approved fixes"
+          check /gaps/ "Knowledge gaps"
+          check /benchmark/ "Correct, first occurrences and repeats"
+          echo "Demo pages served from a fresh database with no API keys."

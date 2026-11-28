@@ -81,7 +81,7 @@ DejaFix calls 23 Meko tools; [meko-usage.md](meko-usage.md) lists each one with 
   themes, works without JavaScript, strict Content-Security-Policy.
 - Agents run in the background: the ticket page shows each real step as it finishes, a ticket
   can't be started twice, and login is throttled.
-- 273 tests, run by GitHub Actions on every push, against an in-process fake of Meko's MCP server.
+- 274 tests on Python 3.12, 3.13 and 3.14, run by GitHub Actions on every push against an in-process fake of Meko's MCP server; a second job runs the README's demo steps on a fresh database and checks the pages over HTTP.
 - A final OWASP Top 10 review fixed five findings (two race conditions, an unhandled upload error,
   unvalidated values written to `.env`, a stale publish) and now requires a written reason to approve
   a fix the reviewer agent escalated.
