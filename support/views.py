@@ -38,9 +38,23 @@ from support.services import (
 )
 
 PAGE_SIZE = 50
+SERVICE_UNAVAILABLE = 503
 CONFLICT = 409
 UPSTREAM_FAILURE = 502
 BAD_REQUEST = 400
+
+
+def missing_agent_keys() -> list[str]:
+    """The keys this copy lacks to run the agents (empty when both are set). Without them the
+    recorded runs (load_demo) can still be browsed."""
+    from django.conf import settings
+
+    return [name for name, value in (("CLAUDE_API_KEY", settings.ANTHROPIC_API_KEY), ("MEKO_API_KEY", settings.MEKO_API_KEY))
+            if not value]
+
+
+def no_keys_message(missing: list[str]) -> str:
+    return f"This copy has no {' and '.join(missing)}, so you are browsing recorded runs. Add them to .env to run the agents."
 
 
 def llm_factory() -> StructuredLLM:
@@ -156,6 +170,7 @@ def _ticket_page(
         "error": error,
         "can_review": request.user.has_perm("support.change_resolution"),
         "can_resolve": request.user.has_perm("support.change_ticket"),
+        "no_keys_message": no_keys_message(missing) if (missing := missing_agent_keys()) else "",
     }
     return render(request, "support/ticket_detail.html", context, status=status)
 
@@ -173,6 +188,8 @@ def ticket_resolve(request: HttpRequest, ref: str) -> HttpResponse:
     ticket = get_object_or_404(Ticket, external_id=ref)
     if not ticket.is_resolvable:
         return _ticket_page(request, ticket, status=CONFLICT, error="This ticket was already resolved.")
+    if missing := missing_agent_keys():
+        return _ticket_page(request, ticket, status=SERVICE_UNAVAILABLE, error=no_keys_message(missing))
     try:
         llm = llm_factory()
     except LLMError as exc:

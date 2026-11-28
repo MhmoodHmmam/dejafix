@@ -46,6 +46,12 @@ All calls go through one gateway (`dejafix/meko/gateway.py`). It sets `agent_id`
 | `selflearning_query_log` | `dejafix/agents/knowledge.py` | The details of one weak search, so `find_gaps` keeps only our resolvers' searches and links each to its ticket. |
 | `selflearning_verify` | `dejafix/agents/knowledge.py` | Replays a weak search after an article is published. We store the band before and after, what ranked first, and the article's rank. |
 
+### Measurement
+
+| Tool | Where | What for |
+|---|---|---|
+| `memory_get_all` | `support/management/commands/reuse_margin.py` | Lists a benchmark run's collective memory (promoted fixes) before measuring how close another issue's fix comes to the reuse threshold. Meko's listing also names who promoted each memory; those fields are never read. |
+
 ### Artifacts and datapacks
 
 | Tool | Where | What for |
@@ -127,7 +133,7 @@ These were checked against the live service and are in the [decision log](decisi
 
 | Tools | Why not |
 |---|---|
-| `memory_get_all`, `memory_get_by_id` | The searches already return what the resolver needs, with match quality. |
+| `memory_get_by_id` | The searches already return what the resolver needs, with match quality. |
 | `memory_update`, `memory_delete_by_id`, `memory_delete_all` | Memories are never edited. A better fix is a new approval; a wrong one gets a correction. That keeps the history auditable. |
 | `conversation_get`, `conversation_list`, `conversation_update`, `conversation_delete` | We write traces; people read them in the Meko portal or on the ticket page. |
 | `datapack_update`, `datapack_delete`, `datapack_search`, `datapack_describe` | One datapack per environment, plus one per benchmark arm. We never delete anything. |

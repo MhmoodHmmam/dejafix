@@ -42,11 +42,13 @@ and three Meko runs (run 1 / 2 / 3).
 **Honest limits:**
 - The reviewer in the benchmark is simulated, and kinder than a busy human.
 - There are two or three runs per arm, so the report shows every run instead of one average.
-- The reuse threshold has not yet been tested by near-misses.
+- The reuse threshold alone would not stop a lookalike: searched with raw ticket text, one wrong fix
+  scored 0.90 against a 0.80 threshold. The triage signature and the reuse check are the guard, and
+  no wrong fix was reused in any run ([reuse-margin.md](reuse-margin.md)).
 
 ## How DejaFix uses Meko (judging: Meko use, 30%)
 
-DejaFix calls 22 Meko tools; [meko-usage.md](meko-usage.md) lists each one with the file and the reason.
+DejaFix calls 23 Meko tools; [meko-usage.md](meko-usage.md) lists each one with the file and the reason.
 
 - **Conversations and traces:** one conversation per agent per ticket, and every step is a turn with
   reasoning, a plan and Claude's token usage (`conversation_create`, `conversation_add_message`,
@@ -74,9 +76,10 @@ DejaFix calls 22 Meko tools; [meko-usage.md](meko-usage.md) lists each one with 
 
 ## Execution (20%)
 
+- A recorded demo (`manage.py load_demo`) lets anyone browse the whole app without API keys.
 - Django app with a full staff UI: pipeline strip, shared-memory page, review panel, light and dark
   themes, works without JavaScript, strict Content-Security-Policy.
-- 253 tests, run by GitHub Actions on every push, against an in-process fake of Meko's MCP server.
+- 260 tests, run by GitHub Actions on every push, against an in-process fake of Meko's MCP server.
 - A final OWASP Top 10 review fixed five findings (two race conditions, an unhandled upload error,
   unvalidated values written to `.env`, a stale publish) and now requires a written reason to approve
   a fix the reviewer agent escalated.

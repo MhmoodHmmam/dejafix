@@ -210,6 +210,28 @@ def build_stateful_meko(docs: list[str] | None = None) -> tuple[MCPServer, MekoW
         return json.dumps({"inserted_ids": [m.id for m in found], "updated_ids": [], "not_found_ids": missing})
 
     @server.tool()
+    def memory_get_all(
+        conversation_id: str,
+        agent_id: str | None = None,
+        run_id: str | None = None,
+        datapack_id: str | None = None,
+        promoted: bool = False,
+        page: int | None = None,
+        page_size: int | None = None,
+    ) -> str:
+        # The live reply shape (week 13), including the promoter's name and email, which DejaFix never uses.
+        if failure := log("memory_get_all"):
+            return failure
+        rows = [
+            {"id": m.id, "agent_id": m.agent_id, "data": m.text, "promoted_by_name": "Someone",
+             "promoted_by_email": "someone@example.test"}
+            for m in world.memories if m.promoted == promoted
+        ]
+        size = page_size or 20
+        return json.dumps({"criteria": {}, "promoted_memories": rows[:size], "total": len(rows), "page": page or 1,
+                           "page_size": size, "total_pages": max(1, -(-len(rows) // size))})
+
+    @server.tool()
     def memory_search(
         query: str,
         conversation_id: str,

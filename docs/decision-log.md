@@ -491,3 +491,29 @@
   - [read] `manage.py check --deploy` output (W004, W008, W012, W016; then W005, W021).
   - [source] `django/utils/asyncio.py`: `SynchronousOnlyOperation` in async contexts.
   - [knowledge] OWASP Top 10:2025, used as the review checklist.
+
+## R13: browse without keys, and the reuse threshold's real margin (week 13)
+- **Decision, recorded demo:**
+  - `data/demo.json` (281 KB) holds the app's state on 2026-11-28: 42 tickets, every recorded agent step, the shared memory, the gaps and five benchmark runs.
+  - `manage.py load_demo` loads it into a fresh database and refuses a database with tickets unless `--force` is given.
+  - The reviewers became two demo users with unusable passwords (`!`), not staff. Sessions, admin logs and real users are left out. A test checks that the file has no email address, key or `promoted_by` field.
+- **Decision, no keys:** without `CLAUDE_API_KEY` or `MEKO_API_KEY` the ticket page shows which keys are missing instead of the Run button. A POST answers 503 (service unavailable) and leaves the ticket as it was.
+  - Before, a missing Claude key gave 502, and a missing Meko key marked the ticket failed. Both described an upstream failure that never happened.
+  - A test renders every page of the loaded demo while any attempt to open an `httpx2` client, an Anthropic client or a Meko session fails the test.
+- **Measured, reuse margin** (`manage.py reuse_margin M3`, `docs/reuse-margin.md`, no Claude):
+  - All 42 tickets' raw text was searched in M3's knowledge base. Once (T037, a short payout that reads like a weekend delay) the weekend-delay fix came back at 0.901, above the 0.80 threshold. Raw text also lowered same-issue scores, down to 0.004 for an Arabic ticket.
+  - With the triage signatures recorded during M3, no other issue's fix came back for any ticket. All six lookalikes reused the fix of their real issue.
+  - So the guard is the English problem signature plus the reuse check, not the threshold alone. The README says so.
+  - The first version searched with each fix's own problem line. That only showed same-issue scores of 1.000 and no competitors, which proves nothing, so it was replaced.
+- **Meko:** `memory_get_all` (promoted) lists the run's collective memory. The live reply puts it under `promoted_memories`, not `results`, and includes the promoter's name and email. Those fields are never read, and the test fake includes them to prove it.
+- **Rejected:**
+  - A ready-made SQLite file: binary, tied to the migrations, and not reviewable as text.
+  - Changing the threshold: the run data shows no wrong offer with signatures, and raising it would cut same-issue recall (M2: recall 0.92 at 0.95).
+- **Tests:** +7:
+  - demo: the fixture's hygiene, load and refuse, no network, no keys;
+  - margin: pure logic, the read-only command, refusing a docs-only run.
+  - `ViewTestCase` now sets a test Claude key, because ticket pages check that the key is present; Meko's test settings were already there.
+- **Sources:**
+  - [read] Live `memory_get_all` reply in M3's datapack (keys `promoted_memories`, `total`, `total_pages`).
+  - [read] `docs/meko-tools.json`: `knowledgebase_search` requires `query`, `conversation_id` and `datapack_id`.
+  - [knowledge] Django 5.2 `dumpdata`/`loaddata` with natural keys, checked by the load test.

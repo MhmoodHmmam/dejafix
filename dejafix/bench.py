@@ -205,3 +205,36 @@ def best_threshold_range(rows: Sequence[ThresholdRow], observations: Sequence[Ca
         recall=best_recall,
         precision_tested=any(seen.other_issue is not None for seen in observations),
     )
+
+
+@dataclass(frozen=True)
+class MarginRow:
+    """One approved fix searched by its own problem line: the best same-issue and other-issue fix scores."""
+
+    issue: str
+    same_issue: float | None
+    other_issue: float | None  # None: no other issue's fix came back at all
+    other_issue_name: str
+    ticket: str = ""
+    lookalike_of: str = ""
+
+
+@dataclass(frozen=True)
+class MarginSummary:
+    max_other: float | None
+    min_same: float | None
+    margin: float | None  # threshold minus the highest other-issue score
+    over_threshold: int  # rows where another issue's fix reached the threshold
+
+
+def reuse_margin(rows: Sequence[MarginRow], threshold: float) -> MarginSummary:
+    """How far below the reuse threshold the closest wrong fix stays."""
+    others = [row.other_issue for row in rows if row.other_issue is not None]
+    sames = [row.same_issue for row in rows if row.same_issue is not None]
+    max_other = max(others, default=None)
+    return MarginSummary(
+        max_other=max_other,
+        min_same=min(sames, default=None),
+        margin=round(threshold - max_other, 3) if max_other is not None else None,
+        over_threshold=sum(1 for score in others if score >= threshold),
+    )

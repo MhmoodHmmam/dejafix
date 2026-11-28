@@ -45,7 +45,9 @@
       </div>
       <div class="ticket-body" dir="auto">{{ ticket.body|linebreaksbr }}</div>
       {% if ticket.failure_reason %}<p class="error"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Last run failed: {{ ticket.failure_reason }}</span></p>{% endif %}
-      {% if can_resolve and ticket.is_resolvable %}
+      {% if can_resolve and ticket.is_resolvable and no_keys_message %}
+      <p class="help no-keys"><svg class="icon icon-s" aria-hidden="true"><use href="#i-alert"/></svg><span>{{ no_keys_message }}</span></p>
+      {% elif can_resolve and ticket.is_resolvable %}
       <form class="run-form" method="post" action="{% url 'support:ticket_resolve' ticket.external_id %}" data-busy="busy-run">{% csrf_token %}
         <button type="submit" class="btn btn-primary" data-busy-text="Agents working…"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span data-label>Run the agents</span></button>
         <p class="help">Triage, a Meko search, a fix and a review. Calls Claude and Meko; takes about 15 to 30 seconds.</p>

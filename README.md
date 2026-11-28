@@ -63,8 +63,12 @@ week 11 fix to how corrections are retrieved.
 that arrived on time but short (the currency fee, not the weekend delay). With shared memory,
 5 of 6 (run 2) and 6 of 6 (run 3) reused the approved fix for their *real* issue, and none reused
 the fix they resemble.
-What this does not show: Meko never returned the resembled issue's fix for them, so they did not
-test how low the reuse threshold can go.
+**Is the reuse threshold safe?** [docs/reuse-margin.md](docs/reuse-margin.md) measures it. Searching
+with each ticket's English problem signature, as the resolver does, no other issue's fix came back
+for any of the 42 tickets. Searching with the raw ticket text, which keeps the misleading words,
+one lookalike (T037, a short payout) brought back the weekend-delay fix at 0.90, above the 0.80
+threshold. So the threshold alone is not the guard: the triage signature and the reuse check after
+it are, and in the run that ticket reused the right fix.
 
 **Learning from corrections.** In run 2 only 1 of 4 tickets after a rejection was right. The cause
 was retrieval: memories Meko extracts from every conversation turn filled `context_search`'s five
@@ -83,6 +87,21 @@ correction was followed; 2 of 3 next tickets were fully right, and the third (T0
 | [docs/demo-script.md](docs/demo-script.md) | The demo video, scene by scene |
 | [docs/decision-log.md](docs/decision-log.md) | Each design decision and the sources it was checked against |
 | [docs/submission.md](docs/submission.md) | The submission text: summary, results, Meko use by judging criterion, links |
+
+## Try it without API keys
+
+The recorded runs, with every agent step, the shared memory, the knowledge gaps and the benchmark,
+load into a fresh SQLite database, so you can browse the whole app with no Anthropic or Meko account.
+The **Run the agents** button then explains which keys are missing.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py load_demo
+.\.venv\Scripts\python.exe manage.py createsuperuser
+.\.venv\Scripts\python.exe manage.py runserver --insecure
+```
 
 ## Setup (Windows PowerShell)
 

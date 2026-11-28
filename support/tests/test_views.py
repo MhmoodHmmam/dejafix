@@ -25,7 +25,9 @@ PAYOUT_DOC = "Card payments settle on a T+2 business days schedule excluding wee
 MEKO_SETTINGS = {"MEKO_API_KEY": "test-key", "MEKO_DATAPACK_ID": TEST_DATAPACK_ID, "MEKO_MCP_URL": "https://meko.test/mcp"}
 
 
-@override_settings(DEJAFIX_CURATOR_AGENT="dejafix-curator", **MEKO_SETTINGS)
+# The Claude key is only checked for presence (week 13: a copy without keys browses recorded runs);
+# the tests use the scripted Claude.
+@override_settings(DEJAFIX_CURATOR_AGENT="dejafix-curator", ANTHROPIC_API_KEY="test-key", **MEKO_SETTINGS)
 class ViewTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):

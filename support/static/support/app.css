@@ -343,6 +343,8 @@ table.compare td:not(:first-child), table.compare th:not(:first-child) { text-al
 .person div span { color: var(--muted); font-size: 13px; }
 .ticket-body { background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px 14px 14px 14px; padding: 14px 16px; font-size: 15px; line-height: 1.6; }
 .run-form p { margin: var(--s2) 0 0; }
+.no-keys { display: flex; gap: 8px; align-items: flex-start; margin-top: var(--s4); padding: 10px 12px; border-radius: var(--radius-s); background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--ink); }
+.no-keys .icon { color: var(--warn); margin-top: 2px; }
 .run-form .btn { width: 100%; }
 .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
 .totals div { padding: var(--s3); border-radius: var(--radius); background: var(--surface-2); }
