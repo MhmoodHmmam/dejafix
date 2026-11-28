@@ -83,6 +83,22 @@ finds it first, the reviewer sees it, and a fix must say how it applied it. In r
 correction was followed; 2 of 3 next tickets were fully right, and the third (T015) named the
 `lp_live_` prefix the note asked for but left out `lp_test_`, which the note didn't mention.
 
+**When the product changes** ([docs/drift.md](docs/drift.md)). Shared memory has a danger of its own: an
+approved fix that goes out of date is still reused, with no human review. Three issues got a product
+update after their first fix was approved, and two repeats of each ran:
+
+| After a product update, 6 repeats | Nobody retires the old fixes (S1) | Old fixes retired with a reason (R1) |
+|---|---|---|
+| Correct with the new answer | 0 | **6** |
+| Reused the outdated fix | 5 | **0** |
+| Needed a person | 1 | 5 |
+| Avg tokens per repeat | 3,362 | 6,387 |
+
+The update was in the knowledge base in both runs, yet without a retirement 5 repeats reused the
+old fix. After it, every repeat skipped it and followed the reason, and in one case (T026) the
+next repeat reused the newly approved fix. One run per arm: Meko's free tier ran out before the
+second pair.
+
 ## Documentation
 
 | Doc | What |
@@ -90,6 +106,7 @@ correction was followed; 2 of 3 next tickets were fully right, and the third (T0
 | [docs/architecture.md](docs/architecture.md) | Diagrams of a ticket's path and the self-learning loop, components, agent identities |
 | [docs/meko-usage.md](docs/meko-usage.md) | Every Meko tool DejaFix calls, where and why, what we learned about Meko Cloud, and what we don't use |
 | [docs/benchmark.md](docs/benchmark.md) | The benchmark, per ticket, with the reuse-threshold calibration |
+| [docs/drift.md](docs/drift.md) | The drift benchmark: an approved fix after a product change, with and without retiring it |
 | [docs/demo-script.md](docs/demo-script.md) | The demo video, scene by scene |
 | [docs/decision-log.md](docs/decision-log.md) | Each design decision and the sources it was checked against |
 | [docs/submission.md](docs/submission.md) | The submission text: summary, results, Meko use by judging criterion, links |

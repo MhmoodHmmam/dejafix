@@ -1,0 +1,29 @@
+{
+  "about": "Drift benchmark: does an approved fix go stale after the product changes, and does retiring it help? Each case solves and approves its first ticket with the docs in data/kb, then publishes a product update, then runs two repeats graded by the new keywords. In the 'retire' arm a simulated staff member retires the old fix with the reason below before the repeats; in the 'stale' arm nobody does. Ticket texts and the first ticket's keywords come from data/tickets.json.",
+  "cases": [
+    {
+      "issue": "payout_weekend_delay",
+      "first": "T001",
+      "repeats": ["T013", "T025"],
+      "update": "data/drift/updates/payouts-2026-12.md",
+      "new_keywords": ["T+1", "Payouts > Calendar"],
+      "retire_reason": "Outdated since 1 December: card payments now settle T+1 business day, not T+2. A Friday payment is paid out on Monday; the date is in Payouts > Calendar."
+    },
+    {
+      "issue": "webhook_duplicate_retries",
+      "first": "T002",
+      "repeats": ["T014", "T026"],
+      "update": "data/drift/updates/webhooks-2026-12.md",
+      "new_keywords": ["5 seconds", "Idempotency-Key"],
+      "retire_reason": "Outdated since the December change: endpoints must answer within 5 seconds, and duplicates are detected with the Idempotency-Key header, not the event id."
+    },
+    {
+      "issue": "invoice_missing_tax",
+      "first": "T006",
+      "repeats": ["T018", "T030"],
+      "update": "data/kb-updates/billing-2026-12.md",
+      "new_keywords": ["Tax region", "Reissue with tax"],
+      "retire_reason": "Outdated since the December update: filter Invoices by Tax: missing and use Bulk actions > Reissue with tax. Credit-noting each invoice by hand is only needed for invoices older than 12 months."
+    }
+  ]
+}

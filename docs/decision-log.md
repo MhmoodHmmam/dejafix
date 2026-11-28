@@ -652,3 +652,46 @@
   - [read] Live replies: `knowledgebase_search` for T030's signature (1 hit, the retired fix) and for the old problem line (the doc at 0.978).
   - [read] `showmigrations` on the live database.
   - [source] `seed_knowledge.py`: `DEFAULT_DIR = data/kb`, non-recursive `glob("*")`; `benchmark_setup` calls it without `--dir`.
+
+## R18: the drift benchmark, an approved fix after a product change (week 19)
+- **Question:** a reused fix skips human review. When the product changes, does an outdated fix keep being reused, and does retiring it help?
+- **Decision, cases** (`data/drift.json`):
+  - Three issues, each with:
+    - a first ticket from `data/tickets.json` (T001, T002, T006);
+    - two existing repeats;
+    - a product update (`data/drift/updates/`, plus the invoice update from week 18);
+    - new keywords that name what changed;
+    - the reason a staff member would write.
+  - `load_drift` refuses unknown tickets, tickets of another issue, a first ticket that is not the issue's first occurrence, new keywords that change nothing, and an empty reason.
+- **Decision, run** (`manage.py drift_benchmark run <name> --arm stale|retire`): every run uses a fresh datapack with `data/kb`.
+  1. The first tickets are solved and approved by the main benchmark's simulated reviewer, graded by the old keywords.
+  2. The updates are uploaded (`seed_knowledge --file`, new).
+  3. In the retire arm, `retire_shared_fix` runs with each reason.
+  4. The repeats run, graded by the new keywords, and a new fix is reviewed as usual.
+  - Results go to `docs/drift.json`, not the app's tables, so the main benchmark and `/benchmark/` are untouched.
+  - The datapack and document helpers were factored out of `support/benchmark.py` (`new_datapack`, `count_documents`) and reused.
+- **Live result:**
+  - S1 (stale): 0/6 correct after the change, and 5/6 reused the outdated fix. The update was in the knowledge base all along.
+  - R1 (retire): 6/6 correct and 0 reused it. Every repeat skipped the retired fix, and T026 reused the fix newly approved on T014.
+  - Retiring costs tokens: 6,387 against 3,362 per repeat, and 5 of 6 repeats needed a person, because new fixes are reviewed.
+- **Found live, Meko's free-tier limits:**
+  - During S2, Meko answered `free_tier_limit_reached` ("Limit of 1000 lifetime requests for 'conversation_add_message'"). Then R2 could not create a datapack (`FREE_TIER_DATAPACK_LIMIT`).
+  - Decision: a run with failed tickets is left out of the comparison and named with its first error ("Runs left out"), because outside failures would count as wrong answers. The report's limits line counts complete runs instead of assuming two per arm.
+  - Consequence: until the Meko account has a higher plan, no new agent run works on it, because every step is a traced turn. The recorded demo (`load_demo`) is unaffected.
+- **Rejected:**
+  - Storing drift results as `BenchmarkRun` rows: different arms and grading would mix into the main report.
+  - Making trace turns best-effort to get past the quota: traces are part of what the app shows and stores.
+- **Tests:** +11 (`support/tests/test_drift.py`), 300 in all:
+  - the real cases;
+  - the validation rules;
+  - the summary;
+  - both arms against the fake Meko;
+  - a failed ticket that doesn't stop the run;
+  - the command's results, report and unique names;
+  - leaving out an incomplete run;
+  - the artifact;
+  - bad names and missing keys;
+  - `seed_knowledge --file`.
+- **Sources:**
+  - [read] Live replies in this session: the quota errors, quoted above.
+  - [source] `support/benchmark.py` (`_run_ticket`, `_simulated_review`) and `dejafix/bench.py` (`grade`, `oracle_review`), reused rather than copied.

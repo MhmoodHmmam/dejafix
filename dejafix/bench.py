@@ -238,3 +238,95 @@ def reuse_margin(rows: Sequence[MarginRow], threshold: float) -> MarginSummary:
         margin=round(threshold - max_other, 3) if max_other is not None else None,
         over_threshold=sum(1 for score in others if score >= threshold),
     )
+
+
+# --- Drift: does an approved fix go stale after the product changes? --------------------------
+
+
+@dataclass(frozen=True)
+class DriftCase:
+    """One issue whose documented answer changes after its first fix is approved (data/drift.json)."""
+
+    issue: str
+    first: BenchTicket
+    repeats: tuple[BenchTicket, ...]
+    update: str  # the product update, a repository-relative path
+    old_keywords: tuple[str, ...]  # grade the first ticket (before the change), from data/tickets.json
+    new_keywords: tuple[str, ...]  # grade the repeats (after the change)
+    retire_reason: str
+
+
+def load_drift(document: Mapping[str, object], truth: GroundTruth) -> tuple[DriftCase, ...]:
+    tickets = {ticket.ref: ticket for ticket in truth.tickets}
+    order = {ticket.ref: index for index, ticket in enumerate(truth.tickets)}
+    cases = []
+    for raw in document["cases"]:
+        issue = raw["issue"]
+        if issue not in truth.issues:
+            raise ValueError(f"drift: unknown issue {issue!r}")
+        refs = [raw["first"], *raw["repeats"]]
+        unknown = [ref for ref in refs if ref not in tickets]
+        if unknown:
+            raise ValueError(f"drift {issue}: unknown tickets {unknown}")
+        if any(tickets[ref].issue != issue for ref in refs):
+            raise ValueError(f"drift {issue}: every ticket must be of this issue")
+        first = tickets[raw["first"]]
+        repeats = tuple(tickets[ref] for ref in raw["repeats"])
+        if first.wave != FIRST_OCCURRENCE or not repeats or any(order[t.ref] < order[first.ref] for t in repeats):
+            raise ValueError(f"drift {issue}: the first ticket must be the issue's first occurrence, before its repeats")
+        new_keywords = tuple(keyword for keyword in raw["new_keywords"] if keyword.strip())
+        old_keywords = tuple(truth.issues[issue])
+        if not new_keywords or set(new_keywords) <= set(old_keywords):
+            raise ValueError(f"drift {issue}: new_keywords must name what changed")
+        reason = str(raw.get("retire_reason", "")).strip()
+        if not reason:
+            raise ValueError(f"drift {issue}: a retire_reason is required")
+        cases.append(DriftCase(issue, first, repeats, raw["update"], old_keywords, new_keywords, reason))
+    return tuple(cases)
+
+
+@dataclass(frozen=True)
+class DriftRow:
+    run: str
+    arm: str
+    issue: str
+    ticket: str
+    phase: str  # "first" (before the change) or "repeat" (after it)
+    source: str  # "new" or "reused"
+    correct: bool
+    stale_reuse: bool  # reused the fix approved before the change
+    retired_skipped: bool
+    escalated: bool
+    human: bool  # a person had to look at it (a new fix, or an escalation)
+    tokens: int
+    llm_ms: int
+    decision: str = ""  # the simulated reviewer: "approved", "rejected" or ""
+    missing: tuple[str, ...] = ()
+    fix_summary: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class DriftSummary:
+    repeats: int
+    correct: int
+    stale_reuses: int
+    retired_skipped: int
+    humans: int
+    avg_tokens: int
+    errors: int
+
+
+def summarize_drift(rows: Sequence[DriftRow]) -> DriftSummary:
+    """After the change: only the repeats count. Failed tickets count as wrong and leave the token average."""
+    repeats = [row for row in rows if row.phase == "repeat"]
+    ran = [row for row in repeats if not row.error]
+    return DriftSummary(
+        repeats=len(repeats),
+        correct=sum(row.correct for row in repeats),
+        stale_reuses=sum(row.stale_reuse for row in repeats),
+        retired_skipped=sum(row.retired_skipped for row in repeats),
+        humans=sum(row.human for row in ran),
+        avg_tokens=round(sum(row.tokens for row in ran) / len(ran)) if ran else 0,
+        errors=len(repeats) - len(ran),
+    )

@@ -78,29 +78,34 @@ def run_config(run: BenchmarkRun) -> MekoConfig:
 # --- Setup ------------------------------------------------------------------------------------
 
 
-def create_datapack(run: BenchmarkRun, *, session_factory: SessionFactory | None = None) -> BenchmarkRun:
-    """Create the run's own datapack (from a conversation in the main datapack)."""
-    if run.datapack_id:
-        return run
+def new_datapack(prefix: str, run_name: str, arm: str, *, session_factory: SessionFactory | None = None) -> tuple[str, str]:
+    """Create a fresh datapack for one run (from a conversation in the main datapack): (id, name)."""
     factory = session_factory or default_session_factory
-    datapack_name = f"dejafix-bench-{run.name.lower()}-{secrets.token_hex(3)}"
+    datapack_name = f"{prefix}-{run_name.lower()}-{secrets.token_hex(3)}"
     calls: list[MekoCallRecord] = []
 
     async def create() -> str:
         async with factory(MekoConfig.from_settings(), calls) as root:
-            trace = AgentTrace(root, agent=BENCHMARK_AGENT, ticket_ref=f"setup-{run.name}")
+            trace = AgentTrace(root, agent=BENCHMARK_AGENT, ticket_ref=f"setup-{run_name}")
             meko = await trace.open()
             reply = await meko.call("datapack_create", name=datapack_name)
             datapack_id = _datapack_id(reply)
             await trace.record(
                 "create_datapack",
                 input_text=datapack_name,
-                output={"datapack_id": datapack_id, "arm": run.arm},
+                output={"datapack_id": datapack_id, "arm": arm},
                 reasoning="Each benchmark arm runs in its own datapack so no earlier memory or document leaks in.",
             )
             return datapack_id
 
-    datapack_id = async_to_sync(create)()
+    return async_to_sync(create)(), datapack_name
+
+
+def create_datapack(run: BenchmarkRun, *, session_factory: SessionFactory | None = None) -> BenchmarkRun:
+    """Create the run's own datapack (from a conversation in the main datapack)."""
+    if run.datapack_id:
+        return run
+    datapack_id, datapack_name = new_datapack("dejafix-bench", run.name, run.arm, session_factory=session_factory)
     BenchmarkRun.objects.filter(pk=run.pk, datapack_id="").update(datapack_id=datapack_id, datapack_name=datapack_name)
     run.refresh_from_db()
     return run
@@ -121,12 +126,17 @@ def _datapack_id(reply: Any) -> str:
 
 def check_documents(run: BenchmarkRun, *, session_factory: SessionFactory | None = None) -> int:
     """Count documentation chunks the run's datapack returns, so a run never starts without docs."""
+    return count_documents(run.datapack_id, run.name, session_factory=session_factory)
+
+
+def count_documents(datapack_id: str, run_name: str, *, session_factory: SessionFactory | None = None) -> int:
     factory = session_factory or default_session_factory
     calls: list[MekoCallRecord] = []
+    config = replace(MekoConfig.from_settings(), datapack_id=datapack_id)
 
     async def search() -> int:
-        async with factory(run_config(run), calls) as root:
-            meko = await AgentTrace(root, agent=BENCHMARK_AGENT, ticket_ref=f"setup-{run.name}").open()
+        async with factory(config, calls) as root:
+            meko = await AgentTrace(root, agent=BENCHMARK_AGENT, ticket_ref=f"setup-{run_name}").open()
             found = await meko.call("knowledgebase_search", query="payout schedule business days", limit=5)
             hits = found.get("results") if isinstance(found, Mapping) else None
             return sum(
@@ -510,7 +520,9 @@ def _threshold_verdict(best) -> str:
     return text
 
 
-def store_report_artifact(data: Mapping[str, Any], *, session_factory: SessionFactory | None = None) -> str:
+def store_report_artifact(
+    data: Mapping[str, Any], *, session_factory: SessionFactory | None = None, filename: str = "dejafix-benchmark-report.json"
+) -> str:
     """Keep the report's numbers in the main datapack as a Meko artifact."""
     factory = session_factory or default_session_factory
     calls: list[MekoCallRecord] = []
@@ -519,6 +531,6 @@ def store_report_artifact(data: Mapping[str, Any], *, session_factory: SessionFa
     async def store() -> str:
         async with factory(MekoConfig.from_settings(), calls) as root:
             meko = await AgentTrace(root, agent=BENCHMARK_AGENT, ticket_ref="report").open()
-            return await put_artifact(meko, filename="dejafix-benchmark-report.json", content=content, content_type=JSON_CONTENT_TYPE)
+            return await put_artifact(meko, filename=filename, content=content, content_type=JSON_CONTENT_TYPE)
 
     return async_to_sync(store)()

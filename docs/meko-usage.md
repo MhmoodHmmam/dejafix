@@ -137,6 +137,11 @@ These were checked against the live service and are in the [decision log](decisi
   only for trace routing.
 - The self-learning query log writes conversation IDs as hyphenated UUIDs, while
   `conversation_create` returns 32 hex digits. We normalize both before matching.
+- A promoted memory can't be updated or deleted through MCP yet (`memory_is_promoted`, GH #314).
+- The free tier has lifetime limits. Week 19 reached 1,000 `conversation_add_message` calls
+  (`free_tier_limit_reached`) and the datapack limit (`FREE_TIER_DATAPACK_LIMIT`). Every agent
+  step is a traced turn, so a busy team needs a paid plan. The drift report names the run the
+  limit cut short and leaves it out of the comparison.
 
 ## Tools we don't use, and why
 

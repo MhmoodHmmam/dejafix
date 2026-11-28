@@ -4,7 +4,7 @@ Meko issues a presigned URL per file (`knowledgebase_upload_document`); the byte
 there as multipart, fields first and the file last. Files Meko already has (same SHA-256)
 are skipped, so re-running is safe.
 
-Usage: `python manage.py seed_knowledge [--dir data/kb] [--wait] [--datapack <uuid>]`
+Usage: `python manage.py seed_knowledge [--dir data/kb | --file <path> ...] [--wait] [--datapack <uuid>]`
 """
 
 from __future__ import annotations
@@ -43,16 +43,27 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("--dir", type=Path, default=DEFAULT_DIR)
+        parser.add_argument("--file", type=Path, action="append", default=[], dest="files",
+                            help="Upload only this file (repeatable) instead of --dir.")
         parser.add_argument("--wait", action="store_true", help="Poll until Meko has indexed every new file.")
         parser.add_argument("--datapack", default="", help="Upload into this datapack instead of MEKO_DATAPACK_ID.")
 
-    def handle(self, *args: Any, **options: Any) -> None:
-        folder: Path = options["dir"]
-        if not folder.is_absolute():
-            folder = Path(settings.BASE_DIR) / folder
-        files = sorted(path for path in folder.glob("*") if path.suffix in CONTENT_TYPES)
-        if not files:
+    def files_to_upload(self, *, folder: Path | None, files: list[Path]) -> list[Path]:
+        base = Path(settings.BASE_DIR)
+        if files:
+            chosen = [path if path.is_absolute() else base / path for path in files]
+            bad = [str(path) for path in chosen if path.suffix not in CONTENT_TYPES or not path.is_file()]
+            if bad:
+                raise CommandError(f"Not an existing .md or .txt file: {', '.join(bad)}")
+            return chosen
+        folder = folder if folder.is_absolute() else base / folder
+        found = sorted(path for path in folder.glob("*") if path.suffix in CONTENT_TYPES)
+        if not found:
             raise CommandError(f"No .md or .txt files in {folder}")
+        return found
+
+    def handle(self, *args: Any, **options: Any) -> None:
+        files = self.files_to_upload(folder=options["dir"], files=options["files"])
         try:
             config = MekoConfig.from_settings()
             if options["datapack"]:
