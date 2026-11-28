@@ -79,7 +79,9 @@ DejaFix calls 23 Meko tools; [meko-usage.md](meko-usage.md) lists each one with 
 - A recorded demo (`manage.py load_demo`) lets anyone browse the whole app without API keys.
 - Django app with a full staff UI: pipeline strip, shared-memory page, review panel, light and dark
   themes, works without JavaScript, strict Content-Security-Policy.
-- 260 tests, run by GitHub Actions on every push, against an in-process fake of Meko's MCP server.
+- Agents run in the background: the ticket page shows each real step as it finishes, a ticket
+  can't be started twice, and login is throttled.
+- 273 tests, run by GitHub Actions on every push, against an in-process fake of Meko's MCP server.
 - A final OWASP Top 10 review fixed five findings (two race conditions, an unhandled upload error,
   unvalidated values written to `.env`, a stale publish) and now requires a written reason to approve
   a fix the reviewer agent escalated.

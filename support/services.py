@@ -14,11 +14,13 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from dejafix.agents.casefile import CASE_FILE_STEP_FIELDS, build_case_file
 from dejafix.agents.pipeline import (
     PipelineOutcome,
+    StepRecord,
     TicketInput,
     curate_approved_fix,
     record_human_correction,
@@ -26,6 +28,7 @@ from dejafix.agents.pipeline import (
 )
 from dejafix.llm import LLMError, StructuredLLM
 from dejafix.meko import MekoCallRecord, MekoConfig, MekoError, MekoSession
+from support import progress
 from support.models import MAX_NOTE_LENGTH, AgentRun, Resolution, Ticket
 
 logger = logging.getLogger("dejafix.support")
@@ -59,15 +62,47 @@ class ResolveResult:
     error: str = ""
 
 
+def claim_ticket(ticket: Ticket) -> bool:
+    """Mark the ticket RUNNING with one conditional UPDATE, so only one run can start.
+
+    New and failed tickets can be claimed, and so can a RUNNING one whose run went stale (the
+    server stopped mid-run)."""
+    stale_before = timezone.now() - Ticket.STALE_RUN_AFTER
+    claimable = Q(status__in=[Ticket.Status.NEW, Ticket.Status.FAILED]) | Q(
+        status=Ticket.Status.RUNNING, updated_at__lt=stale_before
+    )
+    claimed = Ticket.objects.filter(claimable, pk=ticket.pk).update(
+        status=Ticket.Status.RUNNING, failure_reason="", updated_at=timezone.now()
+    )
+    if claimed:
+        progress.start(ticket.pk)
+    return bool(claimed)
+
+
+def _report_step(ticket_pk: int):
+    def report(step: StepRecord) -> None:
+        usage = step.usage
+        progress.add_step(
+            ticket_pk, step=step.step, label=step.step.replace("_", " ").capitalize(), agent=step.agent,
+            tokens=(usage.input_tokens + usage.output_tokens) if usage else 0, ms=usage.latency_ms if usage else 0,
+            meko_calls=step.meko_calls,
+        )
+
+    return report
+
+
 def resolve_ticket(
     ticket: Ticket,
     *,
     llm: StructuredLLM,
     resolver: str = "a",
     session_factory: SessionFactory | None = None,
+    already_claimed: bool = False,
 ) -> ResolveResult:
-    """Run the agents on one ticket. Re-running a resolved ticket is a no-op."""
-    if not ticket.is_resolvable:
+    """Run the agents on one ticket. Re-running a resolved (or running) ticket is a no-op.
+
+    `already_claimed`: the caller (the background runner) has marked the ticket RUNNING."""
+    if not already_claimed and not claim_ticket(ticket):
         return ResolveResult(ticket=ticket, ran=False)
 
     calls: list[MekoCallRecord] = []
@@ -81,6 +116,7 @@ def resolve_ticket(
                 resolver=resolver,
                 trusted_curator=settings.DEJAFIX_CURATOR_AGENT,
                 calls=calls,
+                on_step=_report_step(ticket.pk),
             )
 
     try:
@@ -88,8 +124,8 @@ def resolve_ticket(
     except (MekoError, LLMError) as exc:
         reason = f"{type(exc).__name__}: {exc}"[:MAX_FAILURE_REASON]
         logger.warning("Ticket %s failed: %s", ticket.external_id, reason)
-        # Conditional: a concurrent run may have resolved (and a person approved) it meanwhile.
-        Ticket.objects.filter(pk=ticket.pk, status__in=[Ticket.Status.NEW, Ticket.Status.FAILED]).update(
+        # Conditional: only this run's claim is released; anything else that happened stays.
+        Ticket.objects.filter(pk=ticket.pk, status=Ticket.Status.RUNNING).update(
             status=Ticket.Status.FAILED, failure_reason=reason
         )
         ticket.refresh_from_db()
@@ -103,7 +139,7 @@ def resolve_ticket(
 @transaction.atomic
 def _persist_outcome(ticket: Ticket, outcome: PipelineOutcome) -> None:
     locked = Ticket.objects.select_for_update().get(pk=ticket.pk)
-    if not locked.is_resolvable:  # another worker finished it first
+    if locked.status != Ticket.Status.RUNNING:  # the claim was lost (taken over after going stale)
         return
     for step in outcome.steps:
         AgentRun.objects.update_or_create(

@@ -77,5 +77,6 @@ the 17 reuses the fix had been approved on a ticket the other resolver solved.
 - Staff only, with a change permission per action. CSRF on every form.
 - 400 for invalid input, 409 for a state conflict (for example, approving twice), 502 when Meko or
   Claude fails. Nothing is stored after a failure.
-- **Run the agents** runs inside the request (15 to 30 s). That's fine for a local demo; production
-  would use a task queue.
+- **Run the agents** claims the ticket (`running`) and returns at once. A two-thread pool in the web
+  process runs the agents after the claim commits, and the ticket page polls
+  `/tickets/<ref>/progress/` for each finished step. Tests and management commands run inline.

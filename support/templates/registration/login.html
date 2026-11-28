@@ -7,7 +7,8 @@
     <h1 id="login-title">Support staff log in</h1>
     <p class="muted">Review the agents' fixes and decide what becomes shared memory.</p>
     <form method="post" action="{% url 'login' %}">{% csrf_token %}
-      {% if form.errors %}<p class="error" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Your username and password didn't match.</span></p>{% endif %}
+      {% if throttled_message %}<p class="error" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>{{ throttled_message }}</span></p>
+      {% elif form.errors %}<p class="error" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Your username and password didn't match.</span></p>{% endif %}
       <label for="id_username">Username</label>{{ form.username }}
       <label for="id_password">Password</label>{{ form.password }}
       <input type="hidden" name="next" value="{{ next }}">

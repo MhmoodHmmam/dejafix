@@ -8,11 +8,11 @@ memory in Meko and learn from human decisions.
 - Start the server: `.\.venv\Scripts\python.exe manage.py runserver --insecure`, then log in at
   http://127.0.0.1:8000/ as a staff user.
 - Use tickets that haven't been run yet. In the local database these are already used: T001, T002,
-  T003, T006, T008, T010, T013, T014, T015, T018, T021, T023, T025 and T033 (resolved or reviewed),
-  and T017 (escalated). Fresh pairs for a live demo: **T005 → T029** (refund to a closed card) and
-  **T007 → T019** (CSV encoding).
-- Each **Run the agents** click takes 15 to 40 seconds; the page shows a timer meanwhile. Cut the
-  wait in editing.
+  T003, T005, T006, T008, T010, T013, T014, T015, T018, T021, T023, T025 and T033 (resolved or
+  reviewed), and T017 (escalated). Fresh pairs for a live demo: **T007 → T019** (CSV encoding) and
+  **T009 → T022** (an expired payment link).
+- **Run the agents** returns at once. The page shows each agent step as it finishes (about 15 to
+  40 seconds in all), then the result: worth showing for a few seconds before cutting the wait.
 - On Meko Postgres, open the dashboard once before recording: the first load waits about
   4 seconds for Meko's context quality, then it is cached for 5 minutes.
 - Cost: about $0.04 per new solve and $0.02 per reuse.

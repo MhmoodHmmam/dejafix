@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +55,19 @@ class StepRecord:
     reasoning: str
     usage: LLMUsage | None
     meko_calls: int
+
+
+class _Steps(list):
+    """The run's steps; each one is reported to `on_step` as soon as it is recorded (live progress)."""
+
+    def __init__(self, on_step: Callable[[StepRecord], None] | None) -> None:
+        super().__init__()
+        self._on_step = on_step
+
+    def append(self, step: StepRecord) -> None:  # type: ignore[override]
+        super().append(step)
+        if self._on_step is not None:
+            self._on_step(step)
 
 
 @dataclass
@@ -104,12 +117,13 @@ async def run_pipeline(
     calls: Sequence[MekoCallRecord],
     trusted_reviewer: str = HUMAN_REVIEW_AGENT,
     use_memory: bool = True,
+    on_step: Callable[[StepRecord], None] | None = None,
 ) -> PipelineOutcome:
     if resolver not in RESOLVER_AGENTS:
         raise ValueError(f"resolver must be one of {sorted(RESOLVER_AGENTS)}")
     resolver_agent = RESOLVER_AGENTS[resolver]
     meter = _StepMeter(calls)
-    steps: list[StepRecord] = []
+    steps: list[StepRecord] = _Steps(on_step)
 
     # 1. Triage
     triage_trace = AgentTrace(meko, agent=TRIAGE_AGENT, ticket_ref=ticket.ref)

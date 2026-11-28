@@ -39,6 +39,47 @@
     form.setAttribute("aria-busy", "true");
   });
 
+  // Live progress of a background run: poll the ticket's progress endpoint, then reload when done.
+  const live = document.querySelector("[data-progress-url]");
+  if (live) {
+    const POLL_MS = 1000;
+    const list = live.querySelector("[data-steps]");
+    const clock = live.querySelector("[data-elapsed]");
+    const stepItem = (step) => {
+      const item = document.createElement("li");
+      item.className = "done";
+      item.innerHTML = '<svg class="icon icon-s" aria-hidden="true"><use href="#i-check"/></svg>';
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = step.label;
+      const nums = document.createElement("span");
+      nums.className = "nums";
+      nums.textContent = `${Number(step.tokens).toLocaleString("en-US")} tokens · ${step.meko_calls} Meko calls`;
+      item.append(name, nums);
+      return item;
+    };
+    const render = (data) => {
+      const next = list.querySelector(".next");
+      list.querySelectorAll("li.done").forEach((item) => item.remove());
+      data.steps.forEach((step) => list.insertBefore(stepItem(step), next));
+      if (clock && typeof data.elapsed_s === "number") clock.textContent = `${data.elapsed_s.toFixed(1)} s`;
+    };
+    const poll = async () => {
+      try {
+        const response = await fetch(live.dataset.progressUrl, { headers: { Accept: "application/json" }, cache: "no-store" });
+        if (response.ok) {
+          const data = await response.json();
+          render(data);
+          if (data.done) { window.location.reload(); return; }
+        }
+      } catch (error) {
+        // A dropped request is retried on the next tick.
+      }
+      window.setTimeout(poll, POLL_MS);
+    };
+    poll();
+  }
+
   document.addEventListener("click", async (event) => {
     const button = event.target instanceof Element ? event.target.closest("[data-copy]") : null;
     if (!button) return;

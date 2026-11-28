@@ -6,9 +6,12 @@ what the dashboard, the human review step and the benchmark need to query quickl
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 
 MAX_SUBJECT_LENGTH = 200
 MAX_BODY_LENGTH = 5000
@@ -20,6 +23,7 @@ MEKO_ID_LENGTH = 64
 class Ticket(models.Model):
     class Status(models.TextChoices):
         NEW = "new", "New"
+        RUNNING = "running", "Agents working"
         AWAITING_REVIEW = "awaiting_review", "Awaiting human review"
         ESCALATED = "escalated", "Escalated"
         CLOSED = "closed", "Closed"
@@ -43,8 +47,13 @@ class Ticket(models.Model):
     def __str__(self) -> str:
         return f"{self.external_id}: {self.subject}"
 
+    # A run that never finished (the server stopped mid-run) frees the ticket after this long.
+    STALE_RUN_AFTER = timedelta(minutes=5)
+
     @property
     def is_resolvable(self) -> bool:
+        if self.status == self.Status.RUNNING:
+            return self.updated_at is not None and self.updated_at < timezone.now() - self.STALE_RUN_AFTER
         return self.status in {self.Status.NEW, self.Status.FAILED}
 
 

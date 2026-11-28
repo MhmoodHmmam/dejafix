@@ -170,8 +170,14 @@ Then open http://127.0.0.1:8000/ and log in as a staff user:
 | `/benchmark/` | Docs-only vs DejaFix + Meko, per ticket |
 
 Approving a fix stores it as the curator's memory and promotes it to the datapack's collective
-memory, so repeat tickets reuse it. **Run the agents** waits for Claude and Meko (15 to 30 s) inside
-the request: fine for a local demo, not for production, where a task queue would run it.
+memory, so repeat tickets reuse it. **Run the agents** returns at once: the ticket is claimed
+(Agents working) and a small background pool runs the agents, while the page shows each step as it
+finishes (step name, tokens, Meko calls) and then the result. A second click, or a second person, gets
+409; a run cut short by a server restart frees the ticket after 5 minutes. The pool lives in the web
+process, which suits this single-process server; several processes would need a worker process and a
+shared cache for the progress.
+
+Login allows five failed attempts per username and address in 15 minutes, then answers 429.
 
 With `DJANGO_DEBUG` off (the default), add `--insecure` to `runserver` so it serves the CSS and
 JavaScript locally. The pages follow the system's light or dark theme, work at phone width, and work
@@ -181,7 +187,7 @@ The Content-Security-Policy allows scripts and styles from our own static files 
 For a real deployment rather than the local demo:
 - set `DJANGO_SECRET_KEY`, so sessions survive restarts and work across several workers;
 - set `DJANGO_HTTPS=1` for secure cookies, an HTTPS redirect and HSTS (`manage.py check --deploy` is then clean, apart from the subdomain and preload options that only the domain owner can choose);
-- put the login behind your SSO or a proxy that rate-limits it, because Django has no built-in login throttling.
+- run a single web process (the agents' pool and the login and progress counters live in it), or move them to a worker and a shared cache.
 
 ## How a ticket flows
 

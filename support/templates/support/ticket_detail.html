@@ -1,6 +1,7 @@
 {% extends "support/base.html" %}
 {% load humanize dejafix_ui %}
 {% block title %}{{ ticket.external_id }}{% endblock %}
+{% block head %}{% if running %}<noscript><meta http-equiv="refresh" content="5"></noscript>{% endif %}{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{% url 'support:ticket_list' %}">Tickets</a><span aria-hidden="true">/</span><span>{{ ticket.external_id }}</span></nav>
 <header class="page-head">
@@ -45,7 +46,16 @@
       </div>
       <div class="ticket-body" dir="auto">{{ ticket.body|linebreaksbr }}</div>
       {% if ticket.failure_reason %}<p class="error"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Last run failed: {{ ticket.failure_reason }}</span></p>{% endif %}
-      {% if can_resolve and ticket.is_resolvable and no_keys_message %}
+      {% if running %}
+      <div class="live" data-progress-url="{% url 'support:ticket_progress' ticket.external_id %}" role="status" aria-live="polite">
+        <div class="busy-head"><span class="spinner" aria-hidden="true"></span>Agents working<span class="busy-clock" data-elapsed></span></div>
+        <ol class="live-steps" data-steps>
+          {% for step in progress.steps %}<li class="done"><svg class="icon icon-s" aria-hidden="true"><use href="#i-check"/></svg><span class="name">{{ step.label }}</span><span class="nums">{{ step.tokens }} tokens · {{ step.meko_calls }} Meko calls</span></li>{% endfor %}
+          <li class="next"><span class="spinner" aria-hidden="true"></span><span class="name">Next step…</span></li>
+        </ol>
+        <p>Each step is written to its own Meko conversation; this panel follows them as they finish.</p>
+      </div>
+      {% elif can_resolve and ticket.is_resolvable and no_keys_message %}
       <p class="help no-keys"><svg class="icon icon-s" aria-hidden="true"><use href="#i-alert"/></svg><span>{{ no_keys_message }}</span></p>
       {% elif can_resolve and ticket.is_resolvable %}
       <form class="run-form" method="post" action="{% url 'support:ticket_resolve' ticket.external_id %}" data-busy="busy-run">{% csrf_token %}
@@ -151,8 +161,13 @@
     {% else %}
       <section class="card empty">
         <svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>
+        {% if running %}
+        <h2>The agents are working on this ticket</h2>
+        <p>They search Meko's shared memory before solving anything. The panel on the left follows each step; the fix appears here when they finish.</p>
+        {% else %}
         <h2>No proposed fix yet</h2>
         <p>Run the agents: they search Meko's shared memory before solving anything, and reuse a fix a human already approved when it applies.</p>
+        {% endif %}
         <div class="flow"><span>Triage</span><span>Search Meko</span><span>Reuse or solve</span><span>Review</span><span>You decide</span></div>
       </section>
     {% endif %}

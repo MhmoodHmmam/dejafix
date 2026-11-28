@@ -202,6 +202,7 @@ textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
 .badge.reused, .badge.memory { background: var(--memory-soft); border-color: var(--memory-line); color: var(--memory); }
 .badge.new-fix { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); }
 .status-new { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); }
+.status-running { background: var(--memory-soft); border-color: var(--memory-line); color: var(--memory); }
 .status-closed, .gap-verified, .gap-published { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); }
 .status-awaiting_review, .gap-drafted, .gap-needs_author, .gap-publishing { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn); }
 .status-escalated, .status-failed, .gap-still_weak { background: var(--bad-soft); border-color: var(--bad-line); color: var(--bad); }
@@ -361,6 +362,17 @@ table.compare td:not(:first-child), table.compare th:not(:first-child) { text-al
 .busy-steps li:nth-child(3) { animation-delay: 1.6s; }
 .busy-steps li:nth-child(4) { animation-delay: 2.4s; }
 .busy p { font-size: 13px; color: var(--ink-2); margin: 0; }
+.live { margin-top: var(--s4); padding: var(--s4); border-radius: var(--radius); border: 1px solid var(--memory-line); background: var(--memory-soft); }
+.live .spinner { border-color: var(--memory-line); border-top-color: var(--memory); }
+.live .busy-clock { color: var(--memory); }
+.live-steps { list-style: none; padding: 0; margin: var(--s3) 0; display: grid; gap: 6px; }
+.live-steps li { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; padding: 7px 10px; border-radius: var(--radius-s); background: var(--surface); font-size: 13.5px; }
+.live-steps li.done .icon { color: var(--ok); }
+.live-steps li.next { color: var(--muted); }
+.live-steps li.next .spinner { width: 14px; height: 14px; border-width: 2px; }
+.live-steps .name { font-weight: 600; }
+.live-steps .nums { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.live p { font-size: 13px; color: var(--ink-2); margin: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%, 100% { background: var(--surface); } 15%, 30% { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); } }
 

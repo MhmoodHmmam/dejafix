@@ -9,6 +9,7 @@ urlpatterns = [
     path("tickets/", views.ticket_list, name="ticket_list"),
     path("tickets/<str:ref>/", views.ticket_detail, name="ticket_detail"),
     path("tickets/<str:ref>/resolve/", views.ticket_resolve, name="ticket_resolve"),
+    path("tickets/<str:ref>/progress/", views.ticket_progress, name="ticket_progress"),
     path("tickets/<str:ref>/approve/", views.resolution_approve, name="resolution_approve"),
     path("tickets/<str:ref>/reject/", views.resolution_reject, name="resolution_reject"),
     path("memory/", views.memory_view, name="memory"),

@@ -517,3 +517,41 @@
   - [read] Live `memory_get_all` reply in M3's datapack (keys `promoted_memories`, `total`, `total_pages`).
   - [read] `docs/meko-tools.json`: `knowledgebase_search` requires `query`, `conversation_id` and `datapack_id`.
   - [knowledge] Django 5.2 `dumpdata`/`loaddata` with natural keys, checked by the load test.
+
+## R14: agents in the background with real progress, and login throttling (week 14)
+- **Decision, claim:** a new ticket status `running` ("Agents working"), set by one conditional UPDATE (`claim_ticket`). Only new, failed or stale-running tickets can be claimed, so a second start gets 409.
+  - A run is stale after 5 minutes (`Ticket.STALE_RUN_AFTER`, from `updated_at`), for when the server stops mid-run.
+  - On failure only this run's claim is released (`status=running` → `failed`). The outcome is saved only while the claim is held.
+  - This replaces the week 12 conditional on new/failed and closes that race at its root.
+  - The migration only changes the status choices.
+- **Decision, background run:** the view claims and returns at once. A two-thread `ThreadPoolExecutor` runs the agents after the claim commits (`transaction.on_commit`).
+  - The thread fails closed: a crash is logged and the claim released.
+  - It gives its database connection back with `close_old_connections()`.
+  - Tests and management commands run inline (`DEJAFIX_RUN_AGENTS_INLINE`, on by default under `manage.py test`), so every existing test kept its synchronous flow unchanged.
+- **Decision, progress:**
+  - `run_pipeline` gets an optional `on_step` callback, fired as each step is recorded (a list subclass, so all five step sites report without changes).
+  - The service stores the step name, agent, tokens, model time and Meko calls in the cache, never ticket text.
+  - `/tickets/<ref>/progress/` (staff, GET, `no-store`) returns them with the status. `app.js` polls it every second and reloads when the run is done. Without JavaScript, a `<noscript>` meta refresh reloads every 5 seconds.
+  - Nothing partial is stored in the database: a failed run still leaves no agent steps, as the existing test requires.
+- **Decision, login:** `ThrottledLoginView` answers 429 after 5 failed attempts for one username from one address within 15 minutes, even with the right password.
+  - The same message is shown whether or not the user exists. A success clears the count.
+  - The address is `REMOTE_ADDR`, because `X-Forwarded-For` can be set by anyone. Cache keys are SHA-256 hashes, not raw usernames.
+- **Live check:** T005 was run from the real UI in background mode. The page showed "Agents working", a running clock and Triage's real numbers (1,047 tokens, 3 Meko calls) 12.7 s after the click. It reloaded into "Awaiting human review" at 39 s.
+- **Rejected:**
+  - Celery or a similar task queue: new dependencies and another service to run.
+  - A worker command reading a job table: a second process for the demo.
+  - Writing agent steps to the database as they finish: it would change the "nothing stored after a failure" rule that a test and the case files rely on.
+- **Limits** (documented in the README):
+  - The pool, the progress and the login counters live in the web process. Several processes need a worker and a shared cache.
+  - A server restart mid-run frees the ticket after 5 minutes.
+- **Tests:** +13 (`support/tests/test_background.py`):
+  - claim and 409;
+  - progress during and after a run, staff-only, GET-only and no ticket text;
+  - the running page with its noscript refresh;
+  - failure, Claude unavailable and stale takeover;
+  - closed connections, and inline mode;
+  - three login-throttling tests.
+- **Sources:**
+  - [source] Django 5.2.19: `django/db/__init__.py` (`close_old_connections`), `django/contrib/auth/views.py` (`LoginView.form_invalid` and `form_valid`), and `django/test/testcases.py` (`captureOnCommitCallbacks`).
+  - [knowledge] MDN: `fetch` from the same origin under `default-src 'self'`, and `<meta http-equiv="refresh">` inside `<noscript>`.
+  - [knowledge] RFC 6585: 429 Too Many Requests.

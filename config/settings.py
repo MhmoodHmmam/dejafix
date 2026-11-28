@@ -84,6 +84,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # `manage.py test` stays on SQLite (offline, fast) unless DEJAFIX_TEST_ON_POSTGRES=1.
 RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 DATABASES = {"default": database_config(os.environ, BASE_DIR, running_tests=RUNNING_TESTS)}
+# The agents run in a background thread with live progress, except in tests (inline, deterministic).
+DEJAFIX_RUN_AGENTS_INLINE = env_bool("DEJAFIX_RUN_AGENTS_INLINE", default=RUNNING_TESTS)
 
 
 # Password validation

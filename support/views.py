@@ -9,20 +9,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
+import time
 from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseBadRequest
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
-from dejafix.llm import ClaudeLLM, LLMError, StructuredLLM
+from dejafix.llm import ClaudeLLM, StructuredLLM
 from dejafix.meko import MekoError
-from support import dashboard, memory
+from support import dashboard, memory, progress, runner
 from support.benchmark import calibration_for, ground_truth, summaries_for
 from support.forms import ApproveForm, GapDraftForm, RejectForm, gap_filter, ticket_filter
 from support.gaps import dismiss_gap, publish_gap
@@ -34,7 +35,6 @@ from support.services import (
     ReviewError,
     approve_resolution,
     reject_resolution,
-    resolve_ticket,
 )
 
 PAGE_SIZE = 50
@@ -171,6 +171,8 @@ def _ticket_page(
         "can_review": request.user.has_perm("support.change_resolution"),
         "can_resolve": request.user.has_perm("support.change_ticket"),
         "no_keys_message": no_keys_message(missing) if (missing := missing_agent_keys()) else "",
+        "running": ticket.status == Ticket.Status.RUNNING and not ticket.is_resolvable,
+        "progress": progress.read(ticket.pk) or {},
     }
     return render(request, "support/ticket_detail.html", context, status=status)
 
@@ -187,18 +189,48 @@ def ticket_detail(request: HttpRequest, ref: str) -> HttpResponse:
 def ticket_resolve(request: HttpRequest, ref: str) -> HttpResponse:
     ticket = get_object_or_404(Ticket, external_id=ref)
     if not ticket.is_resolvable:
-        return _ticket_page(request, ticket, status=CONFLICT, error="This ticket was already resolved.")
+        return _ticket_page(request, ticket, status=CONFLICT, error=_not_resolvable_reason(ticket))
     if missing := missing_agent_keys():
         return _ticket_page(request, ticket, status=SERVICE_UNAVAILABLE, error=no_keys_message(missing))
-    try:
-        llm = llm_factory()
-    except LLMError as exc:
-        return _ticket_page(request, ticket, status=UPSTREAM_FAILURE, error=f"Claude is not available: {exc}")
-    result = resolve_ticket(ticket, llm=llm)
-    if result.error:
-        return _ticket_page(request, result.ticket, status=UPSTREAM_FAILURE, error=f"The agents failed: {result.error}")
-    messages.success(request, f"{ticket.external_id}: the agents finished ({result.ticket.get_status_display().lower()}).")
+    if not runner.claim(ticket):  # another request claimed it a moment ago
+        ticket.refresh_from_db()
+        return _ticket_page(request, ticket, status=CONFLICT, error=_not_resolvable_reason(ticket))
+    # llm_factory is looked up here, at call time, so tests can swap it.
+    finished = runner.start(ticket, llm_factory=llm_factory)
+    ticket.refresh_from_db()
+    if not finished:
+        messages.info(request, f"{ticket.external_id}: the agents are working. This page follows each step as it finishes.")
+    elif ticket.status == Ticket.Status.FAILED:
+        return _ticket_page(request, ticket, status=UPSTREAM_FAILURE, error=f"The agents failed: {ticket.failure_reason}")
+    else:
+        messages.success(request, f"{ticket.external_id}: the agents finished ({ticket.get_status_display().lower()}).")
     return redirect("support:ticket_detail", ref=ticket.external_id)
+
+
+def _not_resolvable_reason(ticket: Ticket) -> str:
+    if ticket.status == Ticket.Status.RUNNING:
+        return "The agents are already working on this ticket."
+    return "This ticket was already resolved."
+
+
+@require_GET
+@staff_required
+def ticket_progress(request: HttpRequest, ref: str) -> JsonResponse:
+    """Step names and numbers of the current or last run, polled by the ticket page. No ticket text."""
+    ticket = get_object_or_404(Ticket.objects.only("pk", "status", "updated_at"), external_id=ref)
+    data = progress.read(ticket.pk) or {}
+    running = ticket.status == Ticket.Status.RUNNING and not ticket.is_resolvable
+    started = data.get("started")
+    response = JsonResponse(
+        {
+            "status": ticket.status,
+            "done": not running,
+            "elapsed_s": round(time.time() - started, 1) if isinstance(started, (int, float)) else None,
+            "steps": data.get("steps", []),
+        }
+    )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def _resolution_for(ref: str) -> Resolution:
