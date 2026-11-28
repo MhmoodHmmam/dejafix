@@ -130,7 +130,7 @@ class AccessTests(ViewTestCase):
 
     def test_pages_send_a_strict_csp_but_the_admin_keeps_its_own(self):
         self.assertEqual(self.client.get(reverse("support:dashboard"))["Content-Security-Policy"], CONTENT_SECURITY_POLICY)
-        self.assertIn("script-src 'none'", CONTENT_SECURITY_POLICY)
+        self.assertIn("script-src 'self'", CONTENT_SECURITY_POLICY)  # week 10: our own app.js, nothing inline
         self.assertIn("Content-Security-Policy", Client().get(reverse("login")).headers)
         self.assertNotIn("Content-Security-Policy", self.client.get("/admin/").headers)
 

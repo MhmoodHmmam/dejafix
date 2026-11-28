@@ -2,13 +2,29 @@
 {% load humanize %}
 {% block title %}Benchmark{% endblock %}
 {% block content %}
-<h1>Benchmark</h1>
+<header class="page-head">
+  <div class="titles">
+    <p class="eyebrow"><svg class="icon icon-s" aria-hidden="true"><use href="#i-chart"/></svg>Does shared memory help?</p>
+    <h1>Benchmark</h1>
+    {% if not empty %}<p class="lead">The same agents, prompts, ticket order and documentation, each arm in its own fresh Meko datapack. The only difference is shared memory. The latest finished run of each arm: {{ docs.core }} core tickets{% if meko.lookalikes %}, then {{ meko.lookalikes }} lookalikes that read like one issue but are caused by another{% endif %}. A simulated reviewer approves or corrects new fixes in the Meko arm.</p>{% endif %}
+  </div>
+</header>
 {% if empty %}
-<p class="muted">No finished benchmark yet. See the README: <code>benchmark_setup</code>, <code>benchmark</code>, <code>benchmark_report</code>.</p>
+<section class="card empty">
+  <svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>
+  <h2>No finished benchmark yet</h2>
+  <p>Run it from the README: <code>benchmark_setup</code>, <code>benchmark</code>, <code>benchmark_report</code>.</p>
+</section>
 {% else %}
-<p class="lead">The same agents, prompts, ticket order and documentation, each arm in its own fresh Meko datapack. The only difference is shared memory. The latest finished run of each arm: {{ docs.core }} core tickets{% if meko.lookalikes %}, then {{ meko.lookalikes }} lookalikes that read like one issue but are caused by another{% endif %}. A simulated reviewer approves or corrects new fixes in the Meko arm.</p>
+<section class="kpis" aria-label="Headline results">
+  <article class="kpi accent"><h2><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Correct fixes with Meko</h2><p class="value">{{ meko.correct }}<small> / {{ meko.core }}</small></p><p class="note">{{ docs.correct }} / {{ docs.core }} with docs only</p></article>
+  <article class="kpi"><h2><svg class="icon" aria-hidden="true"><use href="#i-coins"/></svg>Avg tokens on repeats</h2><p class="value">{{ meko.tokens_repeats_avg|floatformat:0|intcomma }}</p><p class="note">{{ docs.tokens_repeats_avg|floatformat:0|intcomma }} with docs only</p></article>
+  <article class="kpi"><h2><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>Tickets a human handled</h2><p class="value">{{ meko.human_touches }}<small> / {{ meko.core }}</small></p><p class="note">{{ docs.human_touches }} / {{ docs.core }} with docs only</p></article>
+  {% if meko.lookalikes %}<article class="kpi"><h2><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>Lookalikes correct</h2><p class="value">{{ meko.correct_lookalikes }}<small> / {{ meko.lookalikes }}</small></p><p class="note">{{ meko.false_reuse_lookalikes }} reused the wrong fix · {{ docs.correct_lookalikes }} / {{ docs.lookalikes }} with docs only</p></article>{% endif %}
+</section>
 
-<section class="card">
+<section class="card" aria-labelledby="bars-title">
+  <header class="card-head"><h2 id="bars-title"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>At a glance</h2></header>
   {% include "support/_bars.html" with bars=bars docs=docs meko=meko %}
 </section>
 
@@ -60,7 +76,7 @@
     {% for row in tickets %}
       <tr{% if row.ticket.wave == 1 %} class="first"{% endif %}>
         <td>{{ row.ticket.ref }}{% if row.ticket.wave == 1 %} <span class="muted">first</span>{% endif %}{% if row.ticket.injection %} <span class="badge status-escalated">injection</span>{% endif %}</td>
-        <td>{{ row.ticket.issue }}{% if row.ticket.lookalike_of %} <span class="muted">looks like {{ row.ticket.lookalike_of }}</span>{% endif %}</td>
+        <td>{{ row.ticket.issue }}{% if row.ticket.lookalike_of %}<span class="sub">looks like {{ row.ticket.lookalike_of }}</span>{% endif %}</td>
         {% include "support/_result_cell.html" with result=row.docs %}
         {% include "support/_result_cell.html" with result=row.meko %}
       </tr>

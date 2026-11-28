@@ -110,7 +110,8 @@ Then open http://127.0.0.1:8000/ and log in as a staff user:
 | Page | What it shows |
 |---|---|
 | `/` | Reuse rate, tokens saved, Meko's live context quality, knowledge gaps, benchmark bars |
-| `/tickets/<ref>/` | The customer message, the proposed fix, and every agent step with its reasoning, tokens and Meko conversation. Buttons: **Run the agents**, **Approve and share**, **Reject with a note** |
+| `/tickets/<ref>/` | A five-stage pipeline strip (triage, retrieve, resolve, review, human), the customer message, the proposed fix, where a reused fix came from (and which tickets reused this one), and every agent step with its reasoning, tokens and Meko conversation. Buttons: **Run the agents** (with a live timer), **Approve and share**, **Reject with a note** |
+| `/memory/` | The shared memory: every human-approved fix in Meko's collective memory, who approved it, the tickets that reused it and the tokens each reuse saved, and every human correction the resolvers learn from |
 | `/gaps/` | Weak searches from Meko's self-learning log; edit, publish or dismiss the librarian's drafts |
 | `/benchmark/` | Docs-only vs DejaFix + Meko, per ticket |
 
@@ -118,7 +119,10 @@ Approving a fix stores it as the curator's memory and promotes it to the datapac
 memory, so repeat tickets reuse it. **Run the agents** waits for Claude and Meko (15 to 30 s) inside
 the request: fine for a local demo, not for production, where a task queue would run it.
 
-With `DJANGO_DEBUG` off (the default), add `--insecure` to `runserver` so it serves the CSS locally.
+With `DJANGO_DEBUG` off (the default), add `--insecure` to `runserver` so it serves the CSS and
+JavaScript locally. The pages follow the system's light or dark theme, work at phone width, and work
+without JavaScript; `app.js` only adds the live timer, double-submit protection and copy buttons.
+The Content-Security-Policy allows scripts and styles from our own static files only.
 
 ## How a ticket flows
 

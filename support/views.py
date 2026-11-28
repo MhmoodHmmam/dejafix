@@ -22,11 +22,12 @@ from django.views.decorators.http import require_GET, require_POST
 
 from dejafix.llm import ClaudeLLM, LLMError, StructuredLLM
 from dejafix.meko import MekoError
-from support import dashboard
+from support import dashboard, memory
 from support.benchmark import calibration_for, ground_truth, summaries_for
 from support.forms import ApproveForm, GapDraftForm, RejectForm, gap_filter, ticket_filter
 from support.gaps import dismiss_gap, publish_gap
 from support.models import BenchmarkRun, KnowledgeGap, Resolution, Ticket
+from support.presenters import pipeline
 from support.services import ReviewError, approve_resolution, reject_resolution, resolve_ticket
 
 PAGE_SIZE = 50
@@ -119,10 +120,26 @@ def _ticket_page(
     reject_form: RejectForm | None = None,
 ) -> HttpResponse:
     resolution = Resolution.objects.filter(ticket=ticket).select_related("reviewed_by").first()
+    runs = list(ticket.runs.order_by("id"))
+    reused_from = reused_by = None
+    if resolution and resolution.reused_memory_id:
+        reused_from = (
+            Resolution.objects.filter(promoted_memory_id=resolution.reused_memory_id)
+            .select_related("ticket", "reviewed_by").first()
+        )
+    if resolution and resolution.promoted_memory_id:
+        reused_by = list(
+            Resolution.objects.filter(reused_memory_id=resolution.promoted_memory_id).select_related("ticket").order_by("id")
+        )
     context = {
         "ticket": ticket,
         "resolution": resolution,
-        "runs": list(ticket.runs.order_by("id")),
+        "runs": runs,
+        "stages": pipeline(ticket, resolution, runs),
+        "max_step_tokens": max((run.total_tokens for run in runs), default=0),
+        "total_tokens": sum(run.total_tokens for run in runs),
+        "reused_from": reused_from,
+        "reused_by": reused_by,
         "gaps": list(ticket.knowledge_gaps.order_by("id")),
         "approve_form": ApproveForm(),
         "reject_form": reject_form or RejectForm(),
@@ -195,6 +212,15 @@ def resolution_reject(request: HttpRequest, ref: str) -> HttpResponse:
         return _ticket_page(request, resolution.ticket, status=UPSTREAM_FAILURE, error=f"Meko failed, nothing was stored: {exc}")
     messages.success(request, f"{ref}: rejected; your note is now a learning for the resolvers.")
     return redirect("support:ticket_detail", ref=ref)
+
+
+# --- Shared memory ----------------------------------------------------------------------------
+
+
+@require_GET
+@staff_required
+def memory_view(request: HttpRequest) -> HttpResponse:
+    return render(request, "support/memory.html", {"memory": memory.overview()})
 
 
 # --- Knowledge gaps ---------------------------------------------------------------------------

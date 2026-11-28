@@ -1,10 +1,12 @@
 {% load humanize %}
-<p class="legend"><span class="swatch docs"></span>{{ docs.run }}: docs only <span class="swatch meko"></span>{{ meko.run }}: DejaFix + Meko memory</p>
+<p class="legend"><span><span class="swatch docs" aria-hidden="true"></span>{{ docs.run }}: docs only</span><span><span class="swatch meko" aria-hidden="true"></span>{{ meko.run }}: DejaFix + Meko memory</span></p>
 <div class="bars">
   {% for row in bars %}
   <div class="bar-row">
     <span class="bar-label">{{ row.label }}</span>
     <svg viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="{{ row.label }}: docs only {{ row.left|floatformat:0 }}, with Meko {{ row.right|floatformat:0 }}">
+      <rect class="track" x="0" y="1" height="10" width="100"></rect>
+      <rect class="track" x="0" y="13" height="10" width="100"></rect>
       <rect class="docs" x="0" y="1" height="10" width="{{ row.left_pct }}"></rect>
       <rect class="meko" x="0" y="13" height="10" width="{{ row.right_pct }}"></rect>
     </svg>

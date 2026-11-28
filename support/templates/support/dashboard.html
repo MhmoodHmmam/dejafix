@@ -2,27 +2,41 @@
 {% load humanize %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1>Shared memory at work</h1>
-<p class="lead">Every ticket searches Meko's shared memory before anything is solved. Fixes a human approved are reused by every agent; corrections become learnings.</p>
+<section class="hero" aria-labelledby="hero-title">
+  <p class="eyebrow"><svg class="icon icon-s" aria-hidden="true"><use href="#i-memory"/></svg>Shared memory at work</p>
+  <h1 id="hero-title">Never solve the same ticket twice.</h1>
+  <p class="lead">Every ticket searches Meko's shared memory before anything is solved. Fixes a human approved are reused by every agent; corrections become learnings.</p>
+  <div class="hero-flow" aria-label="How a ticket flows">
+    <span>Triage</span><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
+    <span class="mem">Search Meko</span><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
+    <span>Reuse or solve</span><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
+    <span>Review</span><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
+    <span class="mem">Human approves → collective memory</span>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="{% url 'support:ticket_list' %}?status=new"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>Resolve new tickets</a>
+    <a class="btn" href="{% url 'support:memory' %}"><svg class="icon" aria-hidden="true"><use href="#i-memory"/></svg>Open shared memory</a>
+  </div>
+</section>
 
 <section class="kpis" aria-label="Key numbers">
   <article class="kpi">
-    <h2>Resolved tickets</h2>
+    <h2><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg>Resolved tickets</h2>
     <p class="value">{{ tickets.resolved }}<small> / {{ tickets.total }}</small></p>
     <p class="note">{{ tickets.by_status.awaiting_review|default:0 }} awaiting review · {{ tickets.by_status.escalated|default:0 }} escalated</p>
   </article>
   <article class="kpi accent">
-    <h2>Reused an approved fix</h2>
+    <h2><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>Reused an approved fix</h2>
     <p class="value">{{ tickets.reused }}<small> ({% widthratio tickets.reuse_rate 1 100 %}%)</small></p>
     <p class="note">no human needed for these</p>
   </article>
   <article class="kpi">
-    <h2>Tokens saved by reuse</h2>
+    <h2><svg class="icon" aria-hidden="true"><use href="#i-coins"/></svg>Tokens saved by reuse</h2>
     <p class="value">{{ tickets.tokens_saved|intcomma }}</p>
     <p class="note">{{ tickets.avg_tokens_reused|floatformat:0|intcomma }} per reused ticket vs {{ tickets.avg_tokens_new|floatformat:0|intcomma }} solved fresh</p>
   </article>
   <article class="kpi">
-    <h2>Meko context quality</h2>
+    <h2><svg class="icon" aria-hidden="true"><use href="#i-gauge"/></svg>Meko context quality</h2>
     {% if quality.available %}
     <p class="value">{{ quality.pct }}%</p>
     <p class="note">of {{ quality.searches }} recent searches found a strong match{% if quality.open_fixes %} · open: {{ quality.open_fixes|join:", " }}{% endif %}</p>
@@ -32,27 +46,27 @@
     {% endif %}
   </article>
   <article class="kpi">
-    <h2>Knowledge gaps</h2>
+    <h2><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>Knowledge gaps</h2>
     <p class="value">{{ gaps.closed_by_article }}<small> closed</small></p>
     <p class="note"><a href="{% url 'support:gap_list' %}">{{ gaps.awaiting_review }} awaiting a human</a></p>
   </article>
 </section>
 
 {% if benchmark %}
-<section class="card">
+<section class="card" aria-labelledby="bench-title">
   <header class="card-head">
-    <h2>Benchmark: same agents, with and without shared memory</h2>
-    <a href="{% url 'support:benchmark' %}">Full results</a>
+    <h2 id="bench-title"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>Benchmark: same agents, with and without shared memory</h2>
+    <a href="{% url 'support:benchmark' %}">Full results <span aria-hidden="true">→</span></a>
   </header>
   {% include "support/_bars.html" with bars=benchmark.bars docs=benchmark.docs meko=benchmark.meko %}
 </section>
 {% endif %}
 
-<section class="card">
-  <h2>Tickets by status</h2>
+<section class="card" aria-labelledby="status-title">
+  <header class="card-head"><h2 id="status-title"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg>Tickets by status</h2><a href="{% url 'support:ticket_list' %}">All tickets <span aria-hidden="true">→</span></a></header>
   <ul class="status-list">
     {% for value, label, count in status_rows %}
-    <li><a href="{% url 'support:ticket_list' %}?status={{ value }}"><span class="badge status-{{ value }}">{{ label }}</span></a> <strong>{{ count }}</strong></li>
+    <li><a href="{% url 'support:ticket_list' %}?status={{ value }}"><span class="badge status-{{ value }}">{{ label }}</span> <strong>{{ count }}</strong></a></li>
     {% endfor %}
   </ul>
 </section>

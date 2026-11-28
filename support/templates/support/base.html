@@ -1,34 +1,74 @@
-{% load static %}<!doctype html>
+{% load static dejafix_ui %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}DejaFix{% endblock %} · DejaFix</title>
   <link rel="stylesheet" href="{% static 'support/app.css' %}">
+  <script src="{% static 'support/app.js' %}" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l2.4-7.2A2.5 2.5 0 0 1 7.8 4h8.4a2.5 2.5 0 0 1 2.4 1.8L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 6h7M7.2 8.2l3.6 7.6M16.8 8.2l-3.6 7.6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2.5z"/><path d="M4 19.5A2 2 0 0 0 6 22h14"/><path d="M8 7.5h8M8 11h5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 17V11M11 17V5M16 17v-8M21 17v-4"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5M5 12h11"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/><path d="M8.5 8.5h7M8.5 12h4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.2L2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/></symbol>
+    <symbol id="i-coins" viewBox="0 0 24 24"><ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 15v3c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.6-3.4 8.4-8 9-4.6-.6-8-4.4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-hash" viewBox="0 0 24 24"><path d="M5 9h15M4 15h15M10 3L8 21M16 3l-2 18"/></symbol>
+  </svg>
+
   <header class="topbar">
-    <a class="brand" href="{% url 'support:dashboard' %}">Deja<span>Fix</span></a>
-    {% if user.is_authenticated %}
-    {% with current=request.resolver_match.url_name %}
-    <nav aria-label="Main">
-      <a href="{% url 'support:dashboard' %}"{% if current == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
-      <a href="{% url 'support:ticket_list' %}"{% if current == 'ticket_list' or current == 'ticket_detail' %} aria-current="page"{% endif %}>Tickets</a>
-      <a href="{% url 'support:gap_list' %}"{% if current == 'gap_list' or current == 'gap_detail' %} aria-current="page"{% endif %}>Knowledge gaps</a>
-      <a href="{% url 'support:benchmark' %}"{% if current == 'benchmark' %} aria-current="page"{% endif %}>Benchmark</a>
-    </nav>
-    {% endwith %}
-    <form class="logout" method="post" action="{% url 'logout' %}">{% csrf_token %}
-      <span class="who">{{ user.get_username }}</span><button type="submit" class="link">Log out</button>
-    </form>
-    {% endif %}
+    <div class="topbar-inner">
+      <a class="brand" href="{% url 'support:dashboard' %}" aria-label="DejaFix home">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect class="back" x="2" y="2" width="19" height="19" rx="6"/><rect class="front" x="11" y="11" width="19" height="19" rx="6"/><path class="tick" d="M15.5 20.8l3.2 3.2 6-6.6"/></svg>
+        <span class="brand-name">Deja<span>Fix</span></span>
+      </a>
+      {% if user.is_authenticated %}
+      {% with current=request.resolver_match.url_name %}
+      <nav class="nav" aria-label="Main">
+        <a href="{% url 'support:dashboard' %}"{% if current == 'dashboard' %} aria-current="page"{% endif %}><svg class="icon icon-s" aria-hidden="true"><use href="#i-dashboard"/></svg><span>Dashboard</span></a>
+        <a href="{% url 'support:ticket_list' %}"{% if current == 'ticket_list' or current == 'ticket_detail' %} aria-current="page"{% endif %}><svg class="icon icon-s" aria-hidden="true"><use href="#i-inbox"/></svg><span>Tickets</span></a>
+        <a href="{% url 'support:memory' %}"{% if current == 'memory' %} aria-current="page"{% endif %}><svg class="icon icon-s" aria-hidden="true"><use href="#i-memory"/></svg><span>Shared memory</span></a>
+        <a href="{% url 'support:gap_list' %}"{% if current == 'gap_list' or current == 'gap_detail' %} aria-current="page"{% endif %}><svg class="icon icon-s" aria-hidden="true"><use href="#i-book"/></svg><span>Knowledge gaps</span></a>
+        <a href="{% url 'support:benchmark' %}"{% if current == 'benchmark' %} aria-current="page"{% endif %}><svg class="icon icon-s" aria-hidden="true"><use href="#i-chart"/></svg><span>Benchmark</span></a>
+      </nav>
+      {% endwith %}
+      <div class="user">
+        <span class="avatar" aria-hidden="true">{{ user.get_username|initials }}</span>
+        <span class="who">{{ user.get_username }}</span>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+          <button type="submit" class="icon-button" aria-label="Log out" title="Log out"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg></button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
   </header>
-  <main>
+
+  <main id="main" tabindex="-1">
     {% if messages %}
-    <ul class="messages">{% for message in messages %}<li class="message {{ message.tags }}">{{ message }}</li>{% endfor %}</ul>
+    <ul class="messages" role="status">{% for message in messages %}<li class="message {{ message.tags }}"><svg class="icon" aria-hidden="true"><use href="#{% if message.tags == 'error' %}i-alert{% else %}i-check{% endif %}"/></svg><span>{{ message }}</span></li>{% endfor %}</ul>
     {% endif %}
     {% block content %}{% endblock %}
   </main>
-  <footer>DejaFix · shared memory by Meko · reasoning by Claude · every fix a human approved</footer>
+
+  <footer class="site-footer">
+    <div><span>DejaFix · shared memory by Meko · reasoning by Claude · every fix a human approved</span><span>Built for ContextCon · Challenge 02</span></div>
+  </footer>
 </body>
 </html>

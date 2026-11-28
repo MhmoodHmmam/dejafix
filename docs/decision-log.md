@@ -384,3 +384,37 @@
   - [source] `dejafix/bench.py` (`load_ground_truth`, wave), `support/benchmark.py` (`_candidate_scores`, `summarize`, `run_benchmark` status rules), `support/models.py` (`BenchmarkResult.wave` is a `PositiveSmallIntegerField`, so wave 3 needs no migration).
   - [read] `data/kb/payouts.md`, `api.md`, `exports.md`, `security.md`, `billing.md`, `payment-links.md`: the passages that answer each lookalike.
   - [read] Live results from Meko Postgres: `best_same_issue_score` and `best_other_issue_score` per lookalike in M2.
+
+## R10: a redesigned staff UI and a shared-memory page (week 10)
+- **Decision, design system:** `app.css` was rewritten around tokens: colors, a 4-px spacing scale, radii, shadows and type.
+  - Light and dark themes follow `prefers-color-scheme`. Motion is reduced under `prefers-reduced-motion`.
+  - Keyboard focus is always visible (`:focus-visible` ring), and a skip link leads to the content. Numbers use tabular figures.
+  - Layouts work from 375 px up: the nav collapses to icons, and the ticket page stacks.
+  - System fonts only (Segoe UI Variable on Windows): no font downloads, nothing for the CSP to allow.
+  - Contrast was computed for the main pairs in both themes. All reach WCAG AA (4.5:1) after one fix: the light-theme violet went from #7c4dff (4.24:1 on its badge) to #6d43f0 (4.98:1).
+- **Decision, ticket page:**
+  - A five-stage pipeline strip shows each stage's state. `support/presenters.py` derives it from the stored runs, and pure tests cover the states.
+  - Agent decisions render as lists, score chips and short Meko IDs instead of Python reprs. The `decision_value` filter builds HTML only with `format_html` / `format_html_join`, which escape every value, so model-written text can't inject markup.
+  - A reused fix links to the ticket where a human approved it, and an approved fix lists the tickets that reused it.
+  - The approve and reject forms form one decision panel that says what each choice does to shared memory.
+- **Decision, shared-memory page (`/memory/`):**
+  - It lists every human-approved fix in collective memory: who approved it, the tickets that reused it, and the tokens each reuse saved (the source ticket's tokens minus the reuse's). It also lists every human correction.
+  - Everything comes from local records, in 4 queries plus session and user, with no Meko call. It shows the latest 50 of each.
+- **Decision, JavaScript:** `app.js` adds a live timer while the agents run (15 to 40 s inside the request), blocks double submits of the approve and reject forms, and adds copy buttons for Meko IDs.
+  - The pages work fully without it: copy buttons stay hidden unless JS adds the `js` class.
+  - The CSP changed from `script-src 'none'` to `script-src 'self'`: our own file only, no inline script, no other origin. A test checks every template for inline styles, inline scripts and `on…=` handlers.
+- **Not changed:** existing query counts (tickets list 4, dashboard 6 and 7) and the HTML the tests assert. The ticket list's filter chips have no per-status counts, because a count would add a query.
+- **Rejected:**
+  - A web font: an external request and a CSP exception, for little gain over system fonts.
+  - A dashboard activity feed: it would add queries to the dashboard. The shared-memory page shows the same history.
+  - A theme toggle: following the OS needs no stored preference.
+- **Video:** re-recorded on the new UI by driving the real buttons in headless Edge:
+  - T008 was solved (5,011 tokens) and approved. T021 reused its fix (2,677 tokens, −47%, score 0.995).
+  - T003's fix missed `lp_live_` and was rejected with a note. T015 read it (`learnings: 1`) and named `lp_test_`, `lp_live_` and the base URL.
+  - The busy state was photographed with the submit held back. The real runs used the normal submit.
+- **Tests:** +19 (`support/tests/test_ui.py`). `test_views.py:133` now checks `script-src 'self'` instead of `'none'`; the user approved this change in the plan.
+- **Sources:**
+  - [source] Django 5.2.19 `django/utils/html.py`: `format_html` and `format_html_join` pass every argument through `conditional_escape`.
+  - [computed] WCAG 2 relative-luminance contrast ratios for the theme colors (script in this session).
+  - [knowledge] CSP Level 3: `script-src 'self'` allows same-origin script files and blocks inline script without `'unsafe-inline'`.
+  - [knowledge] MDN: the `prefers-color-scheme` and `prefers-reduced-motion` media features, and `:focus-visible`.

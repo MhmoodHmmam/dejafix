@@ -1,14 +1,18 @@
 {% extends "support/base.html" %}
 {% block title %}Log in{% endblock %}
 {% block content %}
-<section class="card narrow">
-  <h1>Support staff log in</h1>
-  <form method="post" action="{% url 'login' %}">{% csrf_token %}
-    {% if form.errors %}<p class="error">Your username and password didn't match.</p>{% endif %}
-    <label for="id_username">Username</label>{{ form.username }}
-    <label for="id_password">Password</label>{{ form.password }}
-    <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="primary">Log in</button>
-  </form>
-</section>
+<div class="auth">
+  <section class="card" aria-labelledby="login-title">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect class="back" x="2" y="2" width="19" height="19" rx="6"/><rect class="front" x="11" y="11" width="19" height="19" rx="6"/><path class="tick" d="M15.5 20.8l3.2 3.2 6-6.6"/></svg>
+    <h1 id="login-title">Support staff log in</h1>
+    <p class="muted">Review the agents' fixes and decide what becomes shared memory.</p>
+    <form method="post" action="{% url 'login' %}">{% csrf_token %}
+      {% if form.errors %}<p class="error" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>Your username and password didn't match.</span></p>{% endif %}
+      <label for="id_username">Username</label>{{ form.username }}
+      <label for="id_password">Password</label>{{ form.password }}
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit" class="btn btn-primary">Log in</button>
+    </form>
+  </section>
+</div>
 {% endblock %}

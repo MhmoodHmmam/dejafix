@@ -1,25 +1,29 @@
 {% extends "support/base.html" %}
 {% block title %}Tickets{% endblock %}
 {% block content %}
-<h1>Tickets</h1>
+<header class="page-head">
+  <div class="titles">
+    <h1>Tickets</h1>
+    <p class="lead">Open a ticket to run the agents, see every step they took, and approve or correct the fix.</p>
+  </div>
+</header>
 <nav class="filters" aria-label="Filter by status">
   <a href="{% url 'support:ticket_list' %}"{% if not status %} aria-current="page"{% endif %}>All</a>
   {% for value, label in statuses %}<a href="?status={{ value }}"{% if status == value %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
 </nav>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>Ticket</th><th>Subject</th><th>Customer</th><th>Status</th><th>How it was solved</th></tr></thead>
+  <thead><tr><th scope="col">Ticket</th><th scope="col">Subject</th><th scope="col">Status</th><th scope="col">How it was solved</th></tr></thead>
   <tbody>
   {% for ticket in page.object_list %}
-    <tr>
-      <td><a href="{% url 'support:ticket_detail' ticket.external_id %}">{{ ticket.external_id }}</a></td>
-      <td dir="auto">{{ ticket.subject }}</td>
-      <td>{{ ticket.customer }}</td>
+    <tr class="linked">
+      <td class="ref">{{ ticket.external_id }}</td>
+      <td><a class="row-link" href="{% url 'support:ticket_detail' ticket.external_id %}" dir="auto">{{ ticket.subject }}</a><span class="sub">{{ ticket.customer }}</span></td>
       <td><span class="badge status-{{ ticket.status }}">{{ ticket.get_status_display }}</span></td>
-      <td>{% if ticket.resolution %}{% if ticket.resolution.source == "reused" %}<span class="badge reused">Reused approved fix</span>{% else %}Solved from docs{% endif %}{% else %}—{% endif %}</td>
+      <td>{% if ticket.resolution %}{% if ticket.resolution.source == "reused" %}<span class="badge reused"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>Reused approved fix</span>{% else %}<span class="badge new-fix"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>Solved from docs</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
     </tr>
   {% empty %}
-    <tr><td colspan="5" class="muted">No tickets{% if status %} with this status{% endif %}. Load them with <code>manage.py load_tickets</code>.</td></tr>
+    <tr class="empty-row"><td colspan="4">No tickets{% if status %} with this status{% endif %}. Load them with <code>manage.py load_tickets</code>.</td></tr>
   {% endfor %}
   </tbody>
 </table>
