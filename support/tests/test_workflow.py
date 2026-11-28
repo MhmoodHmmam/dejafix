@@ -205,6 +205,57 @@ class WorkflowTests(TestCase):
         solve_prompt = next(call.prompt for call in self.llm.calls if call.schema == "ProposedFix")
         self.assertIn("bank holiday calendar", solve_prompt)
 
+    def reject_with_note(self, ref: str, note: str) -> None:
+        ticket = self.make_ticket(ref)
+        self.resolve(ticket)
+        reject_resolution(ticket.resolution, user=self.reviewer, note=note, session_factory=self.factory)
+        self.llm.calls.clear()
+
+    def test_correction_crowded_out_of_context_search_is_still_found(self):
+        # Live M2 diagnosis (week 11): Meko's auto-extracted memories filled context_search's top 5,
+        # so the human correction never reached the resolver. A dedicated memory_search finds it.
+        note = "Check the bank holiday calendar first; Monday was a holiday."
+        self.reject_with_note("T1", note)
+        self.world.memories[:0] = [
+            Memory(id=f"auto-{n}", text=f"On Monday the user said: {PAYOUT_SIGNATURE} ({n})", agent_id="dejafix-triage")
+            for n in range(8)
+        ]
+        self.resolve(self.make_ticket("T2"))
+        solve_prompt = next(call.prompt for call in self.llm.calls if call.schema == "ProposedFix")
+        self.assertIn("bank holiday calendar", solve_prompt)
+        self.assertIn("meko:memory_search", self.world.events)
+
+    def test_reviewer_sees_the_past_human_corrections(self):
+        self.reject_with_note("T1", "Check the bank holiday calendar first; Monday was a holiday.")
+        self.resolve(self.make_ticket("T2"))
+        review_prompt = next(call.prompt for call in self.llm.calls if call.schema == "ReviewVerdict")
+        self.assertIn("<past_human_corrections>", review_prompt)
+        self.assertIn("bank holiday calendar", review_prompt)
+
+    def test_fix_that_does_not_say_how_it_applied_a_correction_goes_to_a_human_flagged(self):
+        self.reject_with_note("T1", "Check the bank holiday calendar first; Monday was a holiday.")
+        ticket = self.resolve(self.make_ticket("T2")).ticket
+        self.assertEqual(ticket.status, Ticket.Status.ESCALATED)
+        review = AgentRun.objects.get(ticket=ticket, step="review")
+        self.assertIn("human corrections", " ".join(review.decision["forced"]))
+
+    def test_fix_that_applies_the_correction_waits_for_human_approval(self):
+        self.reject_with_note("T1", "Check the bank holiday calendar first; Monday was a holiday.")
+        default_fix = self.llm._default("ProposedFix")
+        self.llm.overrides["ProposedFix"] = lambda prompt: default_fix.model_copy(
+            update={"corrections_applied": ["Step 1 checks the bank holiday calendar first."]}
+        )
+        ticket = self.resolve(self.make_ticket("T2")).ticket
+        self.assertEqual(ticket.status, Ticket.Status.AWAITING_REVIEW)
+        solve = AgentRun.objects.get(ticket=ticket, step="solve")
+        self.assertEqual(solve.decision["corrections_applied"], ["Step 1 checks the bank holiday calendar first."])
+
+    def test_without_corrections_nothing_changes(self):
+        ticket = self.resolve(self.make_ticket("T1")).ticket
+        self.assertEqual(ticket.status, Ticket.Status.AWAITING_REVIEW)
+        review_prompt = next(call.prompt for call in self.llm.calls if call.schema == "ReviewVerdict")
+        self.assertIn("<past_human_corrections>None.</past_human_corrections>", review_prompt)
+
     # --- traces ------------------------------------------------------------------------------
 
     def test_each_step_is_traced_in_meko_with_reasoning_plan_and_tokens(self):

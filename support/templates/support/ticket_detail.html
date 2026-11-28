@@ -93,6 +93,12 @@
         </header>
         <p class="fix-summary">{{ resolution.fix_summary }}</p>
         <ol class="steps">{% for step in resolution.fix_steps %}<li>{{ step }}</li>{% endfor %}</ol>
+        {% if corrections_applied %}
+        <div class="applied" aria-labelledby="applied-title">
+          <h3 id="applied-title"><svg class="icon icon-s" aria-hidden="true"><use href="#i-note"/></svg>Human corrections applied</h3>
+          <ul>{% for item in corrections_applied %}<li>{{ item }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
         <h3>Reply to the customer</h3>
         <div class="reply" dir="auto">{{ resolution.customer_reply|linebreaksbr }}</div>
         <dl class="facts">

@@ -81,6 +81,25 @@ def _check_lookalike(ref: str, issue: str, lookalike_of: object, issues: Mapping
         raise ValueError(f"{ref}: lookalike comes before any ticket of {missing}")
 
 
+def correction_followups(rows: Sequence[tuple[str, str, int, str, bool]]) -> tuple[int, int]:
+    """For each rejected core ticket: was the next core ticket of the same issue correct?
+
+    `rows` are (ticket ref, issue, wave, human decision, correct). Tickets run in ref order, so
+    the order comes from the refs. Lookalikes (wave 3) are left out, so runs made before and
+    after they existed compare. Returns (correct, total).
+    """
+    core = sorted((row for row in rows if row[2] in (FIRST_OCCURRENCE, REPEAT)), key=lambda row: row[0])
+    correct = total = 0
+    for index, (_, issue, _, decision, _) in enumerate(core):
+        if decision != "rejected":
+            continue
+        following = next((row for row in core[index + 1:] if row[1] == issue), None)
+        if following is not None:
+            total += 1
+            correct += following[4]
+    return correct, total
+
+
 @dataclass(frozen=True)
 class Grade:
     found: tuple[str, ...]

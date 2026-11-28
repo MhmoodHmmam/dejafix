@@ -138,6 +138,9 @@ def _ticket_page(
         "stages": pipeline(ticket, resolution, runs),
         "max_step_tokens": max((run.total_tokens for run in runs), default=0),
         "total_tokens": sum(run.total_tokens for run in runs),
+        "corrections_applied": next(
+            (run.decision.get("corrections_applied") or [] for run in runs if run.step == "solve"), []
+        ),
         "reused_from": reused_from,
         "reused_by": reused_by,
         "gaps": list(ticket.knowledge_gaps.order_by("id")),

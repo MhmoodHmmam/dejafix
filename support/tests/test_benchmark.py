@@ -22,6 +22,7 @@ from dejafix.bench import (
     CandidateScores,
     GroundTruth,
     calibrate,
+    correction_followups,
     grade,
     load_ground_truth,
     best_threshold_range,
@@ -157,6 +158,18 @@ class BenchLogicTests(SimpleTestCase):
         good = load_ground_truth(write_truth(folder, [*first, raw_ticket("L", "export", lookalike_of="payout")]))
         self.assertEqual((good.tickets[-1].wave, good.tickets[-1].lookalike_of), (3, "payout"))
 
+    def test_correction_followups_take_the_next_ticket_of_the_same_issue(self):
+        # (ref, issue, wave, human decision, correct), as M2 recorded them for the API-key issue.
+        rows = [
+            ("T003", "key", 1, "rejected", False), ("T010", "rate", 1, "rejected", False),
+            ("T015", "key", 2, "rejected", False), ("T023", "rate", 2, "rejected", False),
+            ("T027", "key", 2, "rejected", False), ("T034", "rate", 2, "approved", True),
+            ("T040", "key", 3, "", True),  # lookalikes are not counted
+        ]
+        self.assertEqual(correction_followups(rows), (1, 4))
+        self.assertEqual(correction_followups(list(reversed(rows))), (1, 4))  # order comes from the refs
+        self.assertEqual(correction_followups([("T001", "key", 1, "rejected", False)]), (0, 0))
+
     def test_calibration_counts_offers_precision_and_recall(self):
         observations = [
             CandidateScores(same_issue=0.999, other_issue=0.998),  # bunched scores: both clear 0.99
@@ -202,6 +215,22 @@ class BenchmarkRunTests(TestCase):
         return run.results.get(ticket_ref=ref)
 
     # --- the two arms ------------------------------------------------------------------------
+
+    def test_docs_only_arm_never_searches_memory_for_corrections(self):
+        self.run_all(self.make_run(arm="docs_only"))
+        self.assertNotIn("meko:memory_search", self.world.events)
+
+    def test_report_counts_the_next_ticket_after_each_correction(self):
+        docs, meko = self.make_run(name="D1", arm="docs_only"), self.make_run(name="M1")
+        llm = scripted_llm(self.world.events, export_fix_has_bom=False)
+        self.run_all(docs, llm=llm)
+        self.run_all(meko, llm=llm)
+        (summary,) = benchmark.summaries_for([meko])
+        # E1 is rejected (no BOM); its next export ticket, E2, is still wrong.
+        self.assertEqual((summary.followups_correct, summary.followups), (0, 1))
+        with mock.patch.object(benchmark, "ground_truth", lambda: SMALL_TRUTH):
+            markdown, _ = benchmark.build_report([docs, meko], generated_at="now")
+        self.assertIn("| Correct on the next ticket after a correction | - | 0/1 |", markdown)
 
     def test_docs_only_arm_never_writes_or_uses_memory(self):
         run = self.make_run(arm="docs_only")

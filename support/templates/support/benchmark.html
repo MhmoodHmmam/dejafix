@@ -36,6 +36,7 @@
     <tbody>
       <tr><td>Correct, first occurrences and repeats</td><td>{{ docs.correct }}/{{ docs.core }}</td><td>{{ meko.correct }}/{{ meko.core }}</td></tr>
       <tr><td>Correct, first occurrences</td><td>{{ docs.correct_wave1 }}/{{ docs.wave1 }}</td><td>{{ meko.correct_wave1 }}/{{ meko.wave1 }}</td></tr>
+      {% if meko.followups %}<tr><td>Correct on the next ticket after a correction</td><td>—</td><td>{{ meko.followups_correct }}/{{ meko.followups }}</td></tr>{% endif %}
       <tr><td>Correct, repeats</td><td>{{ docs.correct_repeats }}/{{ docs.repeats }}</td><td>{{ meko.correct_repeats }}/{{ meko.repeats }}</td></tr>
       {% if docs.lookalikes or meko.lookalikes %}
       <tr><td>Correct, lookalikes</td><td>{{ docs.correct_lookalikes }}/{{ docs.lookalikes }}</td><td>{{ meko.correct_lookalikes }}/{{ meko.lookalikes }}</td></tr>

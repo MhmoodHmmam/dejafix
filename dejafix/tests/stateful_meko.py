@@ -207,6 +207,25 @@ def build_stateful_meko(docs: list[str] | None = None) -> tuple[MCPServer, MekoW
         return json.dumps({"inserted_ids": [m.id for m in found], "updated_ids": [], "not_found_ids": missing})
 
     @server.tool()
+    def memory_search(
+        query: str,
+        conversation_id: str,
+        agent_id: str | None = None,
+        limit: int = 10,
+        datapack_id: str | None = None,
+        run_id: str | None = None,
+    ) -> str:
+        # Like the live tool: cross-agent (agent_id is only for traces), non-promoted memories only.
+        if failure := log("memory_search"):
+            return failure
+        hits = sorted(
+            ({"id": m.id, "memory": m.text, "agent_id": m.agent_id, "score": overlap(query, m.text)}
+             for m in world.memories if not m.promoted),
+            key=lambda hit: -hit["score"],
+        )[:limit]
+        return json.dumps({"results": hits})
+
+    @server.tool()
     def context_search(
         query: str,
         conversation_id: str,

@@ -10,7 +10,7 @@ manages in the same datapack.
 ```mermaid
 flowchart TD
     T["New ticket"] --> TR["Triage agent<br/>category, problem signature, injection flag"]
-    TR --> RE["Resolver agent: retrieve<br/>context_search + knowledgebase_search"]
+    TR --> RE["Resolver agent: retrieve<br/>context_search + memory_search<br/>+ knowledgebase_search"]
     RE --> Q{"Curator-approved fix<br/>with score at least 0.80?"}
     Q -- "yes" --> RC["Reuse check (low effort)<br/>does the fix apply here?"]
     RC -- "applies" --> RU["Reuse the fix, adapt the reply<br/>closed, no human needed"]

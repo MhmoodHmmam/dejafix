@@ -373,6 +373,9 @@ table.compare td:not(:first-child), table.compare th:not(:first-child) { text-al
 .steps { margin: 0; padding: 0; list-style: none; counter-reset: fix; display: grid; gap: var(--s2); }
 .steps li { counter-increment: fix; position: relative; padding: 10px 12px 10px 44px; border-radius: var(--radius); background: var(--surface-2); font-size: 14px; line-height: 1.5; }
 .steps li::before { content: counter(fix); position: absolute; left: 12px; top: 10px; width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 12px; }
+.applied { margin-top: var(--s4); padding: var(--s3) var(--s4); border-radius: var(--radius); border: 1px solid var(--warn-line); background: var(--warn-soft); }
+.applied h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; color: var(--warn); }
+.applied ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
 .reply { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; font-size: 14px; line-height: 1.65; white-space: normal; }
 .facts { display: grid; grid-template-columns: 180px 1fr; gap: 10px var(--s4); font-size: 14px; margin: var(--s5) 0 0; padding-top: var(--s4); border-top: 1px solid var(--line); }
 .facts dt { color: var(--muted); }

@@ -122,6 +122,15 @@ class TicketLineageTests(ViewTestCase):
         page = self.client.get(reverse("support:ticket_detail", args=[ticket.external_id])).content.decode()
         self.assertNotRegex(page, r"\[\{'|\['|': ")
 
+    def test_corrections_applied_are_shown_and_escaped(self):
+        ticket = self.resolved_ticket()
+        solve = AgentRun.objects.get(ticket=ticket, step="solve")
+        solve.decision = {**solve.decision, "corrections_applied": ["Checks the <b>holiday</b> calendar first."]}
+        solve.save(update_fields=["decision"])
+        page = self.client.get(reverse("support:ticket_detail", args=[ticket.external_id]))
+        self.assertContains(page, "Human corrections applied")
+        self.assertContains(page, "Checks the &lt;b&gt;holiday&lt;/b&gt; calendar first.")
+
     def test_run_button_carries_the_busy_hook_and_works_without_javascript(self):
         Ticket.objects.create(external_id="T9", subject="s", body="b", customer="c")
         page = self.client.get(reverse("support:ticket_detail", args=["T9"]))

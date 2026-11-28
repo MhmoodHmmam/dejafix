@@ -24,7 +24,8 @@ All calls go through one gateway (`dejafix/meko/gateway.py`). It sets `agent_id`
 
 | Tool | Where | What for |
 |---|---|---|
-| `context_search` | `dejafix/agents/retrieval.py` | Called before every solve. Returns human corrections (memories), past conversations and documentation, with Meko's match quality and token savings. |
+| `context_search` | `dejafix/agents/retrieval.py` | Called before every solve. Returns memories, past conversations and documentation, with Meko's match quality and token savings. |
+| `memory_search` | `dejafix/agents/retrieval.py` | Finds human corrections by their fixed header plus the problem signature. In a busy datapack, memories Meko extracts from conversation turns filled `context_search`'s memory slots, so corrections stopped reaching the resolver; this hybrid (vector plus keyword) search ranks them first. |
 | `knowledgebase_search` | `dejafix/agents/retrieval.py`, `pipeline.py`, `knowledge.py` | Documentation chunks **and promoted (collective) fixes**. Promoted memories come back here, not from `context_search`. Also used by the reviewer for policy and by `verify_gaps` to rank an article. |
 | `memory_add` | `dejafix/agents/pipeline.py` | After a human approves: the curator stores the fix in a fixed, parseable format. After a rejection: the note becomes a correction memory. |
 | `memory_promote` | `dejafix/agents/pipeline.py` | Turns an approved fix into the datapack's collective memory, so every resolver can reuse it. Corrections are not promoted: they guide, they don't answer. |
@@ -93,15 +94,17 @@ queries (it used 11) and loads in about 1 second. The first load after 5 minutes
 
 ## Results that depend on Meko
 
-From the [benchmark](benchmark.md) (36 core tickets, same agents, docs only vs DejaFix + Meko,
-two runs per arm, run 1 / run 2):
+From the [benchmark](benchmark.md) (36 core tickets, same agents, docs only vs DejaFix + Meko;
+two docs-only runs, three Meko runs):
 
-- Correct fixes on repeat tickets: 17 / 18 of 24 without shared memory, 22 / 19 with it.
-- Tokens on repeat tickets: 5,348 / 5,329 vs 3,537 / 3,670 on average (−34% / −31%).
-- Tickets a human had to handle: 36 / 36 vs 19 / 20.
+- Correct fixes on repeat tickets: 17 / 18 of 24 without shared memory, 22 / 19 / 21 with it.
+- Tokens on repeat tickets: 5,348 / 5,329 vs 3,537 / 3,670 / 3,681 on average (about −31% to −34%).
+- Tickets a human had to handle: 36 / 36 vs 19 / 20 / 19.
+- Next ticket right after a human correction: 3 of 3, 1 of 4, then 2 of 3 once corrections were
+  searched with `memory_search` (run 3; the miss followed the correction but lacked another keyword).
 - Reuse of another issue's fix: 0. Injection tickets reused or stored: 0 of 2.
-- Six lookalike tickets (run 2), each worded like another issue: 4 of 6 correct from the docs, 6 of 6
-  with shared memory. Five reused the fix for their real issue, none the fix they resemble.
+- Six lookalike tickets, each worded like another issue: 4 of 6 correct from the docs, 6 of 6 with
+  shared memory in both runs (5 and then 6 reused the fix for their real issue, none the fix they resemble).
 
 From the self-learning loop (week 3, live): two weak searches went from Meko's "mid" band to
 "high" after the librarian's articles were published (best score 0.68 → 0.78 and 0.69 → 0.87).
@@ -124,7 +127,7 @@ These were checked against the live service and are in the [decision log](decisi
 
 | Tools | Why not |
 |---|---|
-| `memory_search`, `memory_get_all`, `memory_get_by_id` | `context_search` and `knowledgebase_search` already return what the resolver needs, with match quality. |
+| `memory_get_all`, `memory_get_by_id` | The searches already return what the resolver needs, with match quality. |
 | `memory_update`, `memory_delete_by_id`, `memory_delete_all` | Memories are never edited. A better fix is a new approval; a wrong one gets a correction. That keeps the history auditable. |
 | `conversation_get`, `conversation_list`, `conversation_update`, `conversation_delete` | We write traces; people read them in the Meko portal or on the ticket page. |
 | `datapack_update`, `datapack_delete`, `datapack_search`, `datapack_describe` | One datapack per environment, plus one per benchmark arm. We never delete anything. |

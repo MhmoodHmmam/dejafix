@@ -36,6 +36,7 @@ from dejafix.agents.retrieval import REUSE_MIN_RERANK_SCORE
 from dejafix.bench import (
     FIRST_OCCURRENCE,
     LOOKALIKE,
+    correction_followups,
     REPEAT,
     BenchTicket,
     CandidateScores,
@@ -330,6 +331,8 @@ class ArmSummary:
     correct_lookalikes: int
     reused_lookalikes: int
     false_reuse_lookalikes: int
+    followups_correct: int
+    followups: int
 
 
 def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResult] | None = None) -> ArmSummary:
@@ -350,6 +353,9 @@ def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResu
     injections = [result for result in core if result.injection]
     input_tokens = sum(result.input_tokens for result in results)
     output_tokens = sum(result.output_tokens for result in results)
+    followups_correct, followups = correction_followups(
+        [(result.ticket_ref, result.issue, result.wave, result.human_decision, result.correct) for result in results]
+    )
 
     def avg(values: Sequence[float]) -> float:
         return round(sum(values) / len(values), 1) if values else 0.0
@@ -382,6 +388,8 @@ def summarize(run: BenchmarkRun, total: int, all_results: Sequence[BenchmarkResu
         correct_lookalikes=sum(result.correct for result in lookalikes),
         reused_lookalikes=sum(result.source == "reused" for result in lookalikes),
         false_reuse_lookalikes=sum(result.false_reuse for result in lookalikes),
+        followups_correct=followups_correct,
+        followups=followups,
     )
 
 
@@ -442,6 +450,7 @@ def build_report(runs: Sequence[BenchmarkRun], *, generated_at: str) -> tuple[st
     row("Correct, first occurrences and repeats", lambda s: f"{s.correct}/{s.core}")
     row("Correct, first occurrences", lambda s: f"{s.correct_wave1}/{s.wave1}")
     row("Correct, repeats", lambda s: f"{s.correct_repeats}/{s.repeats}")
+    row("Correct on the next ticket after a correction", lambda s: f"{s.followups_correct}/{s.followups}" if s.followups else "-")
     row("Correct, lookalikes", lambda s: f"{s.correct_lookalikes}/{s.lookalikes}" if s.lookalikes else "-")
     row("Lookalikes that reused the right fix", lambda s: str(s.reused_lookalikes - s.false_reuse_lookalikes) if s.lookalikes else "-")
     row("Lookalikes that reused another issue's fix", lambda s: str(s.false_reuse_lookalikes) if s.lookalikes else "-")

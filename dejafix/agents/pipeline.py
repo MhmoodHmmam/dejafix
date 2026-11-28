@@ -69,6 +69,9 @@ class PipelineOutcome:
     steps: list[StepRecord] = field(default_factory=list)
     # Documentation the resolver relied on; the reviewer checks the fix against the same text.
     evidence: list[str] = field(default_factory=list)
+    # Human corrections the resolver was given, and what it said it did with each.
+    learnings: list[str] = field(default_factory=list)
+    corrections_applied: list[str] = field(default_factory=list)
 
     @property
     def escalated(self) -> bool:
@@ -222,6 +225,7 @@ async def _resolve(
     )
     fix = solved.output
     fix.fix_steps = [clip(step, 240) for step in fix.fix_steps if step.strip()][:MAX_FIX_STEPS]
+    corrections_applied = [clip(item, 240) for item in fix.corrections_applied if item.strip()][:MAX_FIX_STEPS]
     fix.confidence = min(max(fix.confidence, 0.0), 1.0)
     decision = {
         "fix_summary": clip(fix.fix_summary, 300),
@@ -230,6 +234,8 @@ async def _resolve(
         "cited_sources": fix.cited_sources[:6],
         "needs_escalation": fix.needs_escalation,
     }
+    if retrieval.learnings or corrections_applied:
+        decision["corrections_applied"] = corrections_applied
     await trace.record("solve", input_text=triage.problem_signature, output=decision, reasoning=fix.reasoning, plan=fix.plan, usage=solved.usage)
     steps.append(_step("solve", trace, decision, fix.reasoning, solved.usage, meter))
     return PipelineOutcome(
@@ -245,6 +251,8 @@ async def _resolve(
         reviewer_reason="Resolver asked for escalation." if fix.needs_escalation else "",
         steps=steps,
         evidence=list(retrieval.passages),
+        learnings=list(retrieval.learnings),
+        corrections_applied=corrections_applied,
     )
 
 
@@ -268,7 +276,9 @@ async def _review(
     evidence = outcome.evidence + [passage for passage in policy_passages if passage not in outcome.evidence]
     reviewed = await llm.run(
         system=prompts.REVIEW_SYSTEM,
-        prompt=prompts.review_prompt(ticket.subject, ticket.body, outcome.fix_summary, outcome.fix_steps, evidence),
+        prompt=prompts.review_prompt(
+            ticket.subject, ticket.body, outcome.fix_summary, outcome.fix_steps, evidence, outcome.learnings
+        ),
         schema=ReviewVerdict,
         effort="low",
     )
@@ -281,6 +291,8 @@ async def _review(
         forced_reasons.append(outcome.reviewer_reason)
     if outcome.confidence < MIN_SOLVE_CONFIDENCE:
         forced_reasons.append(f"Resolver confidence {outcome.confidence:.2f} is below {MIN_SOLVE_CONFIDENCE}.")
+    if outcome.learnings and not outcome.corrections_applied:
+        forced_reasons.append("Past human corrections were found, but the fix doesn't say how it follows them.")
     final = VERDICT_ESCALATE if forced_reasons or verdict.verdict == VERDICT_ESCALATE else VERDICT_APPROVE
     reason = clip(" ".join([verdict.reasoning, *forced_reasons, *verdict.policy_issues]), 500)
     decision = {"verdict": final, "model_verdict": verdict.verdict, "policy_issues": verdict.policy_issues, "forced": forced_reasons}

@@ -1,6 +1,6 @@
 # DejaFix benchmark
 
-Generated 2026-11-26 17:45 UTC. Model `claude-opus-5-5`; 2 runs of docs_only, 2 runs of meko.
+Generated 2026-11-28 01:00 UTC. Model `claude-opus-5-5`; 2 runs of docs_only, 3 runs of meko.
 
 Both arms run the same agents, ticket order, prompts and documentation, each in its own fresh Meko
 datapack. The only difference is shared memory: approved fixes and human corrections.
@@ -13,25 +13,26 @@ datapack. The only difference is shared memory: approved fixes and human correct
   core tickets. They test whether an approved fix is reused for the wrong problem. They are counted only
   in the lookalike rows, tickets done and total tokens; every other row covers the core tickets.
 
-| Metric | D1 (docs_only) | D2 (docs_only) | M1 (meko) | M2 (meko) |
-|---|---|---|---|---|
-| Tickets done | 36/36 | 42/42 | 36/36 | 42/42 |
-| Correct, first occurrences and repeats | 25/36 | 26/36 | 30/36 | 28/36 |
-| Correct, first occurrences | 8/12 | 8/12 | 8/12 | 9/12 |
-| Correct, repeats | 17/24 | 18/24 | 22/24 | 19/24 |
-| Correct, lookalikes | - | 4/6 | - | 6/6 |
-| Lookalikes that reused the right fix | - | 0 | - | 5 |
-| Lookalikes that reused another issue's fix | - | 0 | - | 0 |
-| Avg tokens, first occurrences | 5,351 | 5,295 | 5,342 | 5,369 |
-| Avg tokens, repeats | 5,348 | 5,329 | 3,537 | 3,670 |
-| Avg model time per ticket | 14.4 s | 14.4 s | 11.8 s | 12.6 s |
-| Avg Meko calls per ticket | 13.0 | 13.0 | 12.9 | 13.0 |
-| Escalated to a human | 3 | 3 | 3 | 3 |
-| Reused an approved fix | 0 | 0 | 17 | 16 |
-| False reuse (another issue's fix) | 0 | 0 | 0 | 0 |
-| Human touches | 36/36 | 36/36 | 19/36 | 20/36 |
-| Injection tickets escalated, nothing stored | 2/2 | 2/2 | 2/2 | 2/2 |
-| Total tokens / est. cost | 192,558 / $1.43 | 224,749 / $1.67 | 148,998 / $1.11 | 174,862 / $1.33 |
+| Metric | D1 (docs_only) | D2 (docs_only) | M1 (meko) | M2 (meko) | M3 (meko) |
+|---|---|---|---|---|---|
+| Tickets done | 36/36 | 42/42 | 36/36 | 42/42 | 42/42 |
+| Correct, first occurrences and repeats | 25/36 | 26/36 | 30/36 | 28/36 | 30/36 |
+| Correct, first occurrences | 8/12 | 8/12 | 8/12 | 9/12 | 9/12 |
+| Correct, repeats | 17/24 | 18/24 | 22/24 | 19/24 | 21/24 |
+| Correct on the next ticket after a correction | - | - | 3/3 | 1/4 | 2/3 |
+| Correct, lookalikes | - | 4/6 | - | 6/6 | 6/6 |
+| Lookalikes that reused the right fix | - | 0 | - | 5 | 6 |
+| Lookalikes that reused another issue's fix | - | 0 | - | 0 | 0 |
+| Avg tokens, first occurrences | 5,351 | 5,295 | 5,342 | 5,369 | 5,622 |
+| Avg tokens, repeats | 5,348 | 5,329 | 3,537 | 3,670 | 3,681 |
+| Avg model time per ticket | 14.4 s | 14.4 s | 11.8 s | 12.6 s | 12.2 s |
+| Avg Meko calls per ticket | 13.0 | 13.0 | 12.9 | 13.0 | 13.9 |
+| Escalated to a human | 3 | 3 | 3 | 3 | 3 |
+| Reused an approved fix | 0 | 0 | 17 | 16 | 17 |
+| False reuse (another issue's fix) | 0 | 0 | 0 | 0 | 0 |
+| Human touches | 36/36 | 36/36 | 19/36 | 20/36 | 19/36 |
+| Injection tickets escalated, nothing stored | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 |
+| Total tokens / est. cost | 192,558 / $1.43 | 224,749 / $1.67 | 148,998 / $1.11 | 174,862 / $1.33 | 172,618 / $1.29 |
 
 ## Reuse threshold calibration (M1)
 
@@ -68,6 +69,25 @@ and how many of those offers were the same issue. The LLM reuse check still deci
 | 0.99 | 22 | 22 | 1.00 | 0.88 |
 | 0.995 | 21 | 21 | 1.00 | 0.84 |
 | 0.999 | 16 | 16 | 1.00 | 0.64 |
+
+Thresholds 0.5-0.9 tie for the best result (no other issue's fix offered, recall 1.00). The current setting, 0.8, is inside this range, so it is kept. No other issue's fix was offered at any threshold, so this data does not test how low the threshold can safely go.
+
+## Reuse threshold calibration (M3)
+
+For each threshold: how many tickets would have been offered an approved fix for the reuse check,
+and how many of those offers were the same issue. The LLM reuse check still decides after the offer.
+
+| Threshold | Offered | Same issue | Precision | Recall |
+|---|---|---|---|---|
+| 0.5 | 26 | 26 | 1.00 | 1.00 |
+| 0.7 | 26 | 26 | 1.00 | 1.00 |
+| 0.8 | 26 | 26 | 1.00 | 1.00 |
+| 0.9 | 26 | 26 | 1.00 | 1.00 |
+| 0.95 | 25 | 25 | 1.00 | 0.96 |
+| 0.98 | 23 | 23 | 1.00 | 0.88 |
+| 0.99 | 21 | 21 | 1.00 | 0.81 |
+| 0.995 | 19 | 19 | 1.00 | 0.73 |
+| 0.999 | 14 | 14 | 1.00 | 0.54 |
 
 Thresholds 0.5-0.9 tie for the best result (no other issue's fix offered, recall 1.00). The current setting, 0.8, is inside this range, so it is kept. No other issue's fix was offered at any threshold, so this data does not test how low the threshold can safely go.
 
@@ -231,3 +251,45 @@ Thresholds 0.5-0.9 tie for the best result (no other issue's fix offered, recall
 | M2 | T040 | sso_domain_not_verified (looks like twofa_lost_device) | 3 | new | yes | - | 8,192 | approved |
 | M2 | T041 | subscription_proration (looks like refund_failed_card_closed) | 3 | reused | yes | - | 2,679 | - |
 | M2 | T042 | payment_link_expired (looks like api_key_wrong_environment) | 3 | reused | yes | - | 2,585 | - |
+| M3 | T001 | payout_weekend_delay | 1 | new | yes | - | 5,456 | approved |
+| M3 | T002 | webhook_duplicate_retries | 1 | new | yes | - | 6,289 | approved |
+| M3 | T003 | api_key_wrong_environment | 1 | new | no | lp_live_ | 5,646 | rejected |
+| M3 | T004 | twofa_lost_device | 1 | new | no | - | 6,280 | escalated |
+| M3 | T005 | refund_failed_card_closed | 1 | new | yes | - | 5,168 | approved |
+| M3 | T006 | invoice_missing_tax | 1 | new | yes | - | 5,356 | approved |
+| M3 | T007 | csv_export_encoding | 1 | new | yes | - | 5,572 | approved |
+| M3 | T008 | subscription_proration | 1 | new | yes | - | 5,216 | approved |
+| M3 | T009 | payment_link_expired | 1 | new | yes | - | 5,165 | approved |
+| M3 | T010 | api_rate_limit_429 | 1 | new | no | Retry-After, /v2/batch | 5,933 | rejected |
+| M3 | T011 | payout_fx_fee | 1 | new | yes | - | 5,493 | approved |
+| M3 | T012 | sso_domain_not_verified | 1 | new | yes | - | 5,891 | approved |
+| M3 | T013 | payout_weekend_delay | 2 | reused | yes | - | 2,715 | - |
+| M3 | T014 | webhook_duplicate_retries | 2 | reused | yes | - | 2,808 | - |
+| M3 | T015 | api_key_wrong_environment | 2 | new | no | lp_test_ | 5,991 | rejected |
+| M3 | T016 | twofa_lost_device | 2 | new | yes | - | 5,570 | approved |
+| M3 | T017 | refund_failed_card_closed | 2 | new | no | - | 5,458 | escalated |
+| M3 | T018 | invoice_missing_tax | 2 | reused | yes | - | 2,564 | - |
+| M3 | T019 | csv_export_encoding | 2 | reused | yes | - | 2,791 | - |
+| M3 | T020 | csv_export_encoding | 2 | reused | yes | - | 2,849 | - |
+| M3 | T021 | subscription_proration | 2 | reused | yes | - | 2,558 | - |
+| M3 | T022 | payment_link_expired | 2 | reused | yes | - | 2,473 | - |
+| M3 | T023 | api_rate_limit_429 | 2 | new | yes | - | 5,998 | approved |
+| M3 | T024 | payout_fx_fee | 2 | reused | yes | - | 2,579 | - |
+| M3 | T025 | payout_weekend_delay | 2 | reused | yes | - | 2,728 | - |
+| M3 | T026 | webhook_duplicate_retries | 2 | reused | yes | - | 2,788 | - |
+| M3 | T027 | api_key_wrong_environment | 2 | new | yes | - | 6,576 | approved |
+| M3 | T028 | twofa_lost_device | 2 | new | no | - | 5,884 | escalated |
+| M3 | T029 | refund_failed_card_closed | 2 | reused | yes | - | 2,480 | - |
+| M3 | T030 | invoice_missing_tax | 2 | reused | yes | - | 2,725 | - |
+| M3 | T031 | subscription_proration | 2 | reused | yes | - | 2,506 | - |
+| M3 | T032 | payment_link_expired | 2 | reused | yes | - | 2,466 | - |
+| M3 | T033 | payout_weekend_delay | 2 | reused | yes | - | 2,691 | - |
+| M3 | T034 | api_rate_limit_429 | 2 | reused | yes | - | 2,796 | - |
+| M3 | T035 | payout_fx_fee | 2 | reused | yes | - | 2,588 | - |
+| M3 | T036 | sso_domain_not_verified | 2 | new | yes | - | 7,754 | approved |
+| M3 | T037 | payout_fx_fee (looks like payout_weekend_delay) | 3 | reused | yes | - | 3,052 | - |
+| M3 | T038 | api_rate_limit_429 (looks like webhook_duplicate_retries) | 3 | reused | yes | - | 2,888 | - |
+| M3 | T039 | csv_export_encoding (looks like invoice_missing_tax) | 3 | reused | yes | - | 2,901 | - |
+| M3 | T040 | sso_domain_not_verified (looks like twofa_lost_device) | 3 | reused | yes | - | 2,855 | - |
+| M3 | T041 | subscription_proration (looks like refund_failed_card_closed) | 3 | reused | yes | - | 2,540 | - |
+| M3 | T042 | payment_link_expired (looks like api_key_wrong_environment) | 3 | reused | yes | - | 2,581 | - |

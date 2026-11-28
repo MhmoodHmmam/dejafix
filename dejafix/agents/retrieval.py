@@ -1,7 +1,10 @@
 """What the resolver knows before it solves anything: one pass over Meko's shared context.
 
-Two calls, because they cover different things (verified against Meko Cloud, see the decision log):
-- `context_search`: private memories (human corrections), past conversations, knowledge base.
+Three calls, because they cover different things (verified against Meko Cloud, see the decision log):
+- `context_search`: private memories, past conversations, knowledge base.
+- `memory_search`: human corrections only, by their fixed header. Meko extracts memories from every
+  conversation turn, and in a busy datapack those filled `context_search`'s few memory slots, so
+  the corrections never reached the resolver (week 11). The hybrid search ranks our header first.
 - `knowledgebase_search`: documentation chunks AND promoted (collective) fixes. Promoted fixes
   do not come back from `context_search`.
 
@@ -15,7 +18,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from dejafix.agents.memory import is_correction_memory, parse_fix_memory
+from dejafix.agents.memory import CORRECTION_HEADER, is_correction_memory, parse_fix_memory
 from dejafix.meko import MekoGateway
 
 CONTEXT_SEARCH_LIMIT = 5
@@ -27,6 +30,9 @@ MAX_LEARNINGS = 3
 REUSE_MIN_RERANK_SCORE = 0.80
 # context_search keeps weak memory rows on the "auto" path, so corrections need their own floor.
 LEARNING_MIN_SCORE = 0.30
+CORRECTION_SEARCH_LIMIT = 10
+# memory_search scores (live, M2 datapack): 0.77-0.85 for corrections of the same issue.
+CORRECTION_MIN_SCORE = 0.70
 PROMOTED_SOURCE = "memory"
 
 
@@ -35,6 +41,12 @@ class ApprovedFix:
     memory_id: str
     text: str
     score: float
+
+
+def _is_trusted_correction(hit: Mapping[str, Any], text: str, trusted_reviewer: str, floor: float) -> bool:
+    # Exact format only (Meko also auto-extracts lookalike memories from conversation turns), and
+    # only from the reviewer agent: memory search spans every agent.
+    return hit.get("agent_id") == trusted_reviewer and is_correction_memory(text) and _score(hit, "score") >= floor
 
 
 @dataclass
@@ -104,17 +116,26 @@ async def retrieve(
             retrieval.tokens_saved = int(_score(savings, "tokens_saved"))
         for hit in _dicts(results.get("memory")) if use_memory else ():
             text = _text_of(hit)
-            # Exact format only (Meko also auto-extracts lookalike memories from conversation
-            # turns), and only from the reviewer agent: memory search spans every agent.
-            if (
-                hit.get("agent_id") == trusted_reviewer
-                and is_correction_memory(text)
-                and _score(hit, "score") >= LEARNING_MIN_SCORE
-            ):
+            if _is_trusted_correction(hit, text, trusted_reviewer, LEARNING_MIN_SCORE):
                 retrieval.learnings.append(text)
         for hit in _dicts(results.get("knowledge_base")):
             if text := _text_of(hit):
                 retrieval.passages.append(text)
+
+    if use_memory:
+        corrections = await meko.call(
+            "memory_search", query=f"{CORRECTION_HEADER}: {signature}", limit=CORRECTION_SEARCH_LIMIT
+        )
+        ranked = sorted(
+            _dicts(corrections.get("results") if isinstance(corrections, Mapping) else None),
+            key=lambda hit: -_score(hit, "score"),
+        )
+        found = [
+            text for hit in ranked
+            if _is_trusted_correction(hit, text := _text_of(hit), trusted_reviewer, CORRECTION_MIN_SCORE)
+        ]
+        # The dedicated search ranks corrections best, so its finds go first; no duplicates.
+        retrieval.learnings = list(dict.fromkeys(found + retrieval.learnings))
 
     knowledge = await meko.call("knowledgebase_search", query=signature, limit=KB_SEARCH_LIMIT)
     hits = knowledge.get("results") if isinstance(knowledge, Mapping) else None

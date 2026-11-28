@@ -106,10 +106,11 @@ class DocsTests(SimpleTestCase):
     def test_readme_results_quote_the_benchmark_report(self):
         report = table_rows(BENCHMARK_REPORT.read_text(encoding="utf-8"))
         readme = table_rows((ROOT / "README.md").read_text(encoding="utf-8"))
-        self.assertEqual(report["Metric"], ["D1 (docs_only)", "D2 (docs_only)", "M1 (meko)", "M2 (meko)"])
+        # Week 11 added M3 (after the correction-retrieval fix): two docs-only runs, three Meko runs.
+        self.assertEqual(report["Metric"], ["D1 (docs_only)", "D2 (docs_only)", "M1 (meko)", "M2 (meko)", "M3 (meko)"])
         for readme_label, report_label in README_RESULT_ROWS.items():
             with self.subTest(row=readme_label):
                 docs_cell, meko_cell = readme[readme_label]
-                quoted = NUMBER.findall(docs_cell)[:2] + NUMBER.findall(meko_cell)[:2]
+                quoted = NUMBER.findall(docs_cell)[:2] + NUMBER.findall(meko_cell)[:3]
                 expected = [NUMBER.findall(cell)[0] for cell in report[report_label]]
                 self.assertEqual(quoted, expected)

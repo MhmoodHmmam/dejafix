@@ -43,6 +43,13 @@ class ProposedFix(BaseModel):
     needs_escalation: bool = Field(description="True if the docs don't cover it or policy requires a human.")
     reasoning: str = Field(description="One to three sentences on why this fix.")
     plan: list[str] = Field(description="2 to 4 short imperative actions you took to reach the fix.")
+    corrections_applied: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One entry per past human correction given to you: how this fix follows it, or why it does not apply "
+            "to this ticket. Empty only if no correction was given."
+        ),
+    )
 
 
 class ReviewVerdict(BaseModel):

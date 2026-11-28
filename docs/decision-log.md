@@ -418,3 +418,42 @@
   - [computed] WCAG 2 relative-luminance contrast ratios for the theme colors (script in this session).
   - [knowledge] CSP Level 3: `script-src 'self'` allows same-origin script files and blocks inline script without `'unsafe-inline'`.
   - [knowledge] MDN: the `prefers-color-scheme` and `prefers-reduced-motion` media features, and `:focus-visible`.
+
+## R11: human corrections that actually reach the resolver (week 11)
+- **Measured first:** a new metric, "Correct on the next ticket after a correction": for each rejected core ticket, whether the next core ticket of the same issue was right. Lookalikes are left out. It is computed from stored results, so M1 (3 of 3) and M2 (1 of 4) were scored retroactively.
+- **Diagnosis** (read-only searches in M2's datapack, with triage run again to get each ticket's signature):
+  - Meko extracts memories from every conversation turn, under our agents' IDs. By the time T023 and T027 ran, those memories filled all five memory slots of `context_search`, and the human correction was not among them.
+  - For T015 the correction came back fifth, so the resolver had it and still missed a keyword.
+  - So the main cause was retrieval, and a smaller one was application.
+- **Decision, retrieval:** a dedicated `memory_search` with the query `DejaFix human correction: <signature>`.
+  - It is a hybrid (vector plus keyword) search, so our fixed header lifts corrections to the top. Live on M2 it put the correction first for T015, T023 and T027, and returned none for an issue that had no correction (T018).
+  - Trust rules are unchanged: only the reviewer agent's memories, in the exact format, with a score floor of 0.70 (live scores for same-issue corrections were 0.77 to 0.85).
+  - Its finds come first; duplicates of `context_search` finds are dropped.
+  - Only the Meko arm calls it; the docs-only arm has no memory.
+- **Decision, application:**
+  - The solve prompt says corrections must be followed. The new `corrections_applied` field must say how each one was followed, or why it does not apply.
+  - The reviewer now sees the corrections and escalates a fix that ignores one.
+  - A code rule escalates a fix that was given corrections but left `corrections_applied` empty.
+  - The ticket page shows "Human corrections applied".
+- **Rejected:**
+  - Raising `context_search`'s limit: it only delays the crowding as the datapack grows.
+  - An automatic "revise" loop after the reviewer flags a fix: more tokens and complexity, and a person must see the case anyway.
+  - `memory_get_all` with filtering in code: it pages through every memory in the datapack.
+- **Results, M3** (Meko arm, 42 tickets, $1.29):
+  - Core 30 of 36, the same as M1 and better than M2's 28. Repeats 21 of 24. Lookalikes 6 of 6, all by reusing the fix of their real issue.
+  - Next ticket after a correction: 2 of 3. All three corrections were followed. T015 named `lp_live_`, the key T003's note asked for, but left out `lp_test_`, which the simulated reviewer's note never mentioned.
+  - Escalations stayed at 3: the stricter review sent no extra tickets to a human.
+  - One run per change can't separate the fix from run-to-run variation (M1 and M3 both score 30), so the report shows every run.
+- **Tests:** +9:
+  - the crowded-out correction is still found;
+  - the reviewer sees the corrections;
+  - a fix that doesn't apply them is flagged, and one that does waits for a human;
+  - nothing changes without corrections;
+  - the metric (pure and in the report);
+  - the docs-only arm never calls `memory_search`;
+  - applied corrections are shown on the ticket page, escaped.
+  - The README-vs-report docs test now expects M3's column; that change follows from adding the approved run.
+- **Sources:**
+  - [read] `docs/meko-tools.json`: `memory_search` is "hybrid search… semantic similarity with keyword matching" and is cross-agent (`agent_id` is only for traces). `context_search` has a per-source `limit`.
+  - [source] `dejafix/agents/retrieval.py` and `prompts.py` before the change: `review_prompt` took no corrections.
+  - [read] Live M2 searches in this session: the scores and ranks above.

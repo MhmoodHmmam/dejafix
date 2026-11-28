@@ -19,25 +19,32 @@ DejaFix's Claude agents share one memory in Meko:
 
 ## Results
 
-Same agents, same 36 synthetic tickets, each arm in its own fresh Meko datapack, run twice
-(run 1 / run 2, [full report](docs/benchmark.md)):
+Same agents, same 36 synthetic tickets, each arm in its own fresh Meko datapack: two docs-only
+runs and three Meko runs (run 1 / 2 / 3, [full report](docs/benchmark.md)). Run 3 came after the
+week 11 fix to how corrections are retrieved.
 
 | | Docs only | DejaFix + Meko shared memory |
 |---|---|---|
-| Correct fixes, of 36 | 25 / 26 | **30 / 28** |
-| Correct on repeat tickets, of 24 | 17 / 18 | **22 / 19** |
-| Avg tokens on repeat tickets | 5,348 / 5,329 | **3,537 / 3,670** (−34% / −31%) |
-| Tickets a human had to handle, of 36 | 36 / 36 | **19 / 20** |
-| Lookalike tickets correct, of 6 (run 2) | 4 | **6** |
+| Correct fixes, of 36 | 25 / 26 | **30 / 28 / 30** |
+| Correct on repeat tickets, of 24 | 17 / 18 | **22 / 19 / 21** |
+| Avg tokens on repeat tickets | 5,348 / 5,329 | **3,537 / 3,670 / 3,681** (about −31% to −34%) |
+| Tickets a human had to handle, of 36 | 36 / 36 | **19 / 20 / 19** |
+| Next ticket correct after a human correction | – | 3 of 3 / 1 of 4 / **2 of 3** |
+| Lookalike tickets correct, of 6 (runs 2 and 3) | 4 | **6 / 6** |
 | Wrong reuse / injection tickets stored | 0 / 0 of 2 | 0 / 0 of 2 |
 
 **Lookalikes** (T037–T042) read like one issue but are caused by another, for example a payout
 that arrived on time but short (the currency fee, not the weekend delay). With shared memory,
 5 of 6 reused the approved fix for their *real* issue and none reused the fix they resemble.
 What this does not show: Meko never returned the resembled issue's fix for them, so they did not
-test how low the reuse threshold can go. And learning from corrections varies: in run 1 the
-next ticket after each rejection was right. In run 2 it was not: the rate-limit issue was right
-only on its third ticket (T034), and the API-key issue on none of its three.
+test how low the reuse threshold can go.
+
+**Learning from corrections.** In run 2 only 1 of 4 tickets after a rejection was right. The cause
+was retrieval: memories Meko extracts from every conversation turn filled `context_search`'s five
+memory slots, so the human correction never reached the resolver. A dedicated `memory_search` now
+finds it first, the reviewer sees it, and a fix must say how it applied it. In run 3 every
+correction was followed; 2 of 3 next tickets were fully right, and the third (T015) named the
+`lp_live_` prefix the note asked for but left out `lp_test_`, which the note didn't mention.
 
 ## Documentation
 
@@ -127,12 +134,13 @@ The Content-Security-Policy allows scripts and styles from our own static files 
 ## How a ticket flows
 
 1. **Triage** (`dejafix-triage`): category, an English problem signature, and an injection flag.
-2. **Retrieve** (resolver): `context_search` plus `knowledgebase_search`, always before solving.
+2. **Retrieve** (resolver): `context_search`, `memory_search` (human corrections) and `knowledgebase_search`, always before solving.
 3. **Resolve**:
    - If a curator-approved fix scores 0.80 or more, a low-effort check decides whether it applies.
    - Otherwise the resolver solves from the documentation.
-4. **Review** (`dejafix-reviewer`): checks the fix against the policy and the resolver's evidence.
-   Code rules can only make the verdict stricter.
+4. **Review** (`dejafix-reviewer`): checks the fix against the policy, the resolver's evidence and
+   the past human corrections. Code rules can only make the verdict stricter: a fix that was given
+   corrections but doesn't say how it follows them goes to a human flagged.
 5. **Human** (the ticket page, or the Django admin):
    - Approve: the curator promotes the fix to collective memory.
    - Reject with a note: the note becomes a learning the next resolver reads.
@@ -161,7 +169,7 @@ the article helped.
 The same agents run over all 42 tickets (36 core, then 6 lookalikes) in both arms, each arm in its
 own fresh datapack with the same documentation. The only difference is Meko's shared memory.
 Results: [docs/benchmark.md](docs/benchmark.md). D1 and M1 ran before the lookalikes existed, so
-they cover the 36 core tickets; D2 and M2 cover all 42.
+they cover the 36 core tickets; D2, M2 and M3 cover all 42.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py benchmark_setup D1 --arm docs_only   # creates and seeds a datapack
