@@ -8,16 +8,17 @@ memory in Meko and learn from human decisions.
 - Start the server: `.\.venv\Scripts\python.exe manage.py runserver --insecure`, then log in at
   http://127.0.0.1:8000/ as a staff user.
 - Use tickets that haven't been run yet. In the local database these are already used: T001, T002,
-  T003, T005, T006, T008, T010, T013, T014, T015, T018, T021, T023, T025 and T033 (resolved or
-  reviewed), and T017 (escalated). Fresh pairs for a live demo: **T007 → T019** (CSV encoding) and
-  **T009 → T022** (an expired payment link).
+  T003, T005, T006, T007, T008, T010, T013, T014, T015, T018, T019, T021, T023, T025 and T033
+  (resolved or reviewed), and T017 (escalated). Fresh pairs for a live demo: **T009 → T022** (an
+  expired payment link) and **T011 → T024** (a payout short by the currency fee).
 - **Run the agents** returns at once. The page shows each agent step as it finishes (about 15 to
   40 seconds in all), then the result: worth showing for a few seconds before cutting the wait.
 - On Meko Postgres, open the dashboard once before recording: the first load waits about
   4 seconds for Meko's context quality, then it is cached for 5 minutes.
 - Cost: about $0.04 per new solve and $0.02 per reuse.
-- Recorded on 2026-11-27 with the redesigned UI: T008 → T021 (reuse) and T003 → T015 (correction).
-  T021 used 2,677 tokens against 5,011 for T008 (−47%), and T015 read the correction on T003.
+- Recorded on 2026-11-28 with background runs: T007 → T019 (reuse, with the real progress panel
+  captured once a second and shown at 5× speed), and on 2026-11-27 T003 → T015 (correction).
+  T019 used 2,811 tokens against 5,567 for T007 (−50%), and T015 read the correction on T003.
 
 ## Scenes
 
@@ -39,10 +40,10 @@ memory in Meko and learn from human decisions.
 
 ### 0:53–1:45 · First ticket: solved from the docs
 
-**Show:** `/tickets/T008/` → **Run the agents** (the timer runs; cut the wait) → the pipeline strip
-at the top, the proposed fix, then "Why: every step the agents took".
+**Show:** `/tickets/T007/` → **Run the agents** → the "Agents working" panel filling in step by
+step → the pipeline strip at the top, the proposed fix, then "Why: every step the agents took".
 
-> A subscriber was charged extra after upgrading. No approved fix exists yet, so the resolver
+> Arabic customer names look broken in a CSV export. No approved fix exists yet, so the resolver
 > solves it from the documentation. Every step is a Meko conversation turn, with the agent's
 > reasoning, its token usage, and its Meko conversation ID. About five thousand tokens.
 
@@ -53,8 +54,9 @@ at the top, the proposed fix, then "Why: every step the agents took".
 
 ### 1:45–2:27 · Same problem, new customer: reused
 
-**Show:** `/tickets/T021/` → **Run the agents** → the purple "Reused an approved fix from shared
-memory" card (it links back to T008), the skipped Review and Human stages, the reuse check step.
+**Show:** `/tickets/T019/` → **Run the agents** → the progress panel (triage, retrieve, reuse
+check) → the purple "Reused an approved fix from shared memory" card (it links back to T007), the
+skipped Review and Human stages, the reuse check step.
 
 > A different customer, different words, same problem. The resolver finds the approved fix in
 > Meko with a high score. A cheap check confirms it applies, and the reply is adapted to this
@@ -78,7 +80,7 @@ If the first fix already names both prefixes, approve it instead and say that th
 
 ### 3:17–3:39 · The shared memory
 
-**Show:** `/memory/`: the counters, the T008 fix with its reuse on T021 and the tokens saved, and
+**Show:** `/memory/`: the counters, the T007 fix with its reuse on T019 and the tokens saved, and
 the T003 correction.
 
 > Every fix a human approved, who approved it, every ticket that reused it and what that saved,
@@ -97,9 +99,9 @@ the T003 correction.
 **Show:** the top table of [benchmark.md](benchmark.md) (all four runs), then `/benchmark/` and
 its lookalike rows (T037–T042).
 
-> Same agents, same 36 tickets, in separate Meko datapacks, and we ran it twice. The only
-> difference is shared memory. With Meko: 30 and 28 correct instead of 25 and 26, a third fewer
-> tokens on repeat tickets, and about 20 tickets for a human instead of 36. Then six lookalikes,
+> Same agents, same 36 tickets, in separate Meko datapacks: two runs without shared memory and
+> three with it. With Meko: 30, 28 and 30 correct instead of 25 and 26, a third fewer tokens on
+> repeat tickets, and about 20 tickets for a human instead of 36. Then six lookalikes,
 > worded like one problem but caused by another: all six right with Meko, and none reused the
 > wrong fix. Both prompt-injection tickets were escalated without storing anything.
 
