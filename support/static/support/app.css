@@ -388,6 +388,8 @@ table.compare td:not(:first-child), table.compare th:not(:first-child) { text-al
 .decision-panel h3 { margin: 0 0 4px; text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .decision-panel p { font-size: 13px; color: var(--ink-2); margin: 0; }
 .decision-panel label { margin-top: var(--s3); }
+.warn-note { display: flex; gap: 8px; align-items: flex-start; margin: var(--s3) 0 0 !important; padding: 10px 12px; border-radius: var(--radius-s); background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--ink) !important; }
+.warn-note .icon { color: var(--warn); margin-top: 2px; }
 .decision-panel button { margin-top: auto; }
 .decision-panel form > :nth-last-child(2) { margin-bottom: var(--s3); }
 .lineage { display: flex; flex-wrap: wrap; gap: var(--s2); }

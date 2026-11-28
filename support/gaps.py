@@ -227,6 +227,7 @@ def publish_gap(
     )
     if not claimed:
         raise ReviewError("This gap is already being published.")
+    gap.refresh_from_db()  # publish the text as it is now, not as it was when the page loaded
 
     source_ticket = gap.ticket.external_id if gap.ticket_id and approved_fixes_for(gap) else ""
     content = compose_article(title=gap.draft_title, body=gap.draft_body, source_ticket=source_ticket)

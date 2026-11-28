@@ -91,6 +91,7 @@ class MekoWorld:
     datapacks: dict[str, str] = field(default_factory=dict)
     replay_top_source: str | None = None  # what Meko's replay ranked first (live: often "conversation")
     fail_tool: str | None = None
+    promote_returns_null_ids: bool = False  # Meko answering {"inserted_ids": null}
     fail_code: str = "internal_error"
 
     def memory_by_id(self, memory_id: str) -> Memory:
@@ -204,6 +205,8 @@ def build_stateful_meko(docs: list[str] | None = None) -> tuple[MCPServer, MekoW
         for memory in found:
             memory.promoted = True
         missing = [memory_id for memory_id in memory_ids if memory_id not in {m.id for m in found}]
+        if world.promote_returns_null_ids:
+            return json.dumps({"inserted_ids": None, "updated_ids": None, "not_found_ids": missing})
         return json.dumps({"inserted_ids": [m.id for m in found], "updated_ids": [], "not_found_ids": missing})
 
     @server.tool()

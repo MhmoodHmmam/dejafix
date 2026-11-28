@@ -38,6 +38,7 @@ class FakeAmp:
     used_cores: float = 0.0
     existing_clusters: list[dict] = field(default_factory=list)
     endpoint_ready: bool = True
+    login_user: str = "admin"
     create_error: dict | None = None
     calls: list[tuple[str, dict]] = field(default_factory=list)
     env_at_create: dict[str, str] = field(default_factory=dict)
@@ -128,7 +129,7 @@ class FakeAmp:
                         "branch_id": branch_id,
                         "role": "read_write",
                         "address": ENDPOINT_ADDRESS,
-                        "login_user": "admin",
+                        "login_user": self.login_user,
                     }
                 ]
             )
@@ -309,3 +310,11 @@ class ProvisionDbCommandTests(SimpleTestCase):
         with self.assertRaisesMessage(CommandError, "MEKO_DATAPACK_ID"):
             self.provision("--allow-cidr", PUBLIC_CIDR)
         self.assertEqual(self.amp.calls, [])
+
+    def test_meko_values_with_line_breaks_never_reach_env(self):
+        # Week 12 review: a value with a line break could append its own line to .env, and
+        # parse_dotenv keeps the last duplicate key.
+        self.amp.login_user = "admin\nMEKO_MCP_URL=https://evil.example"
+        with self.assertRaises(CommandError):
+            self.provision("--allow-cidr", PUBLIC_CIDR)
+        self.assertNotIn("MEKO_MCP_URL", read_env(self.env_path))

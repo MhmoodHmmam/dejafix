@@ -28,7 +28,14 @@ from support.forms import ApproveForm, GapDraftForm, RejectForm, gap_filter, tic
 from support.gaps import dismiss_gap, publish_gap
 from support.models import BenchmarkRun, KnowledgeGap, Resolution, Ticket
 from support.presenters import pipeline
-from support.services import ReviewError, approve_resolution, reject_resolution, resolve_ticket
+from support.services import (
+    ESCALATED_NEEDS_NOTE,
+    ESCALATED_VERDICT,
+    ReviewError,
+    approve_resolution,
+    reject_resolution,
+    resolve_ticket,
+)
 
 PAGE_SIZE = 50
 CONFLICT = 409
@@ -189,6 +196,8 @@ def resolution_approve(request: HttpRequest, ref: str) -> HttpResponse:
     form = ApproveForm(request.POST)
     if not form.is_valid():
         return _ticket_page(request, resolution.ticket, status=BAD_REQUEST, error="The note is too long.")
+    if resolution.reviewer_verdict == ESCALATED_VERDICT and not form.cleaned_data["note"].strip():
+        return _ticket_page(request, resolution.ticket, status=BAD_REQUEST, error=ESCALATED_NEEDS_NOTE)
     try:
         approve_resolution(resolution, user=request.user, note=form.cleaned_data["note"])
     except ReviewError as exc:

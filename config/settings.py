@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from config.database import database_config
+from config.security import https_settings
 from config.env import env_bool, env_float, env_list, env_str, load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -128,6 +129,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
+# Secure cookies, HTTPS redirect and HSTS, with DJANGO_HTTPS=1 (off for the local http demo).
+globals().update(https_settings(os.environ))
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "support:dashboard"

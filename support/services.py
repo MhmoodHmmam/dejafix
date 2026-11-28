@@ -29,6 +29,10 @@ from dejafix.meko import MekoCallRecord, MekoConfig, MekoError, MekoSession
 from support.models import MAX_NOTE_LENGTH, AgentRun, Resolution, Ticket
 
 logger = logging.getLogger("dejafix.support")
+# A fix the reviewer agent escalated (an injection attempt, low confidence, a policy issue) can still
+# be approved, but not with one click: the person must say why. The note goes into the case file.
+ESCALATED_VERDICT = "escalate"
+ESCALATED_NEEDS_NOTE = "The reviewer agent escalated this fix: write why you approve it."
 
 MAX_FAILURE_REASON = 300
 
@@ -84,7 +88,10 @@ def resolve_ticket(
     except (MekoError, LLMError) as exc:
         reason = f"{type(exc).__name__}: {exc}"[:MAX_FAILURE_REASON]
         logger.warning("Ticket %s failed: %s", ticket.external_id, reason)
-        Ticket.objects.filter(pk=ticket.pk).update(status=Ticket.Status.FAILED, failure_reason=reason)
+        # Conditional: a concurrent run may have resolved (and a person approved) it meanwhile.
+        Ticket.objects.filter(pk=ticket.pk, status__in=[Ticket.Status.NEW, Ticket.Status.FAILED]).update(
+            status=Ticket.Status.FAILED, failure_reason=reason
+        )
         ticket.refresh_from_db()
         return ResolveResult(ticket=ticket, ran=True, error=reason)
 
@@ -162,6 +169,8 @@ def approve_resolution(
     if resolution.source != Resolution.Source.NEW:
         raise ReviewError("Only newly solved fixes need approval.")
     note = note.strip()[:MAX_NOTE_LENGTH]
+    if resolution.reviewer_verdict == ESCALATED_VERDICT and not note:
+        raise ReviewError(ESCALATED_NEEDS_NOTE)
     # Claim the decision with a conditional UPDATE so two reviewers can't both curate it.
     claimed = Resolution.objects.filter(pk=resolution.pk, review_status=Resolution.Review.PENDING).update(
         review_status=Resolution.Review.APPROVED, reviewed_by=user, reviewed_at=timezone.now(), human_note=note

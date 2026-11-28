@@ -17,6 +17,32 @@ DejaFix's Claude agents share one memory in Meko:
 - **It finds its own gaps.** Meko grades every search. A librarian agent drafts the missing
   articles, and Meko's replay shows whether they helped.
 
+## Tour in 60 seconds
+
+All four screenshots are the running app, with real Claude and Meko runs from 2026-11-27.
+
+**A repeat problem, solved from shared memory.** T021 reused the fix a human approved on T008:
+no reviewer agent, no human review, 2,677 tokens instead of 5,011. The pipeline strip shows each
+stage, and the purple card links back to where the fix was approved.
+
+![Ticket T021: the five-stage pipeline strip, and a card saying the fix was reused from shared memory, approved on T008](docs/images/ticket-reused.png)
+
+**The shared memory, in one place.** Every human-approved fix in Meko's collective memory, who
+approved it, which tickets reused it and the tokens each reuse saved, plus every human correction.
+
+![The Shared memory page: counters for fixes, reuses, tokens saved and corrections, then each approved fix with the tickets that reused it](docs/images/shared-memory.png)
+
+**Every step explains itself.** Each agent step is a turn in a Meko conversation, with its
+reasoning, tokens and decision. Here T015's resolver read one human correction (`learnings: 1`)
+before solving. Dark mode follows the system.
+
+![Dark mode: T015's Retrieve and Solve steps, with the decision showing learnings: 1 and a fix that names lp_test_ and lp_live_](docs/images/ticket-dark.png)
+
+**The dashboard.** Reuse rate, tokens saved, Meko's live context quality, knowledge gaps, and the
+benchmark against a docs-only baseline.
+
+![The dashboard: a hero banner with the pipeline, key numbers, and benchmark bars comparing docs only with DejaFix plus Meko](docs/images/dashboard.png)
+
 ## Results
 
 Same agents, same 36 synthetic tickets, each arm in its own fresh Meko datapack: two docs-only
@@ -35,7 +61,8 @@ week 11 fix to how corrections are retrieved.
 
 **Lookalikes** (T037–T042) read like one issue but are caused by another, for example a payout
 that arrived on time but short (the currency fee, not the weekend delay). With shared memory,
-5 of 6 reused the approved fix for their *real* issue and none reused the fix they resemble.
+5 of 6 (run 2) and 6 of 6 (run 3) reused the approved fix for their *real* issue, and none reused
+the fix they resemble.
 What this does not show: Meko never returned the resembled issue's fix for them, so they did not
 test how low the reuse threshold can go.
 
@@ -55,6 +82,7 @@ correction was followed; 2 of 3 next tickets were fully right, and the third (T0
 | [docs/benchmark.md](docs/benchmark.md) | The benchmark, per ticket, with the reuse-threshold calibration |
 | [docs/demo-script.md](docs/demo-script.md) | The demo video, scene by scene |
 | [docs/decision-log.md](docs/decision-log.md) | Each design decision and the sources it was checked against |
+| [docs/submission.md](docs/submission.md) | The submission text: summary, results, Meko use by judging criterion, links |
 
 ## Setup (Windows PowerShell)
 
@@ -130,6 +158,11 @@ With `DJANGO_DEBUG` off (the default), add `--insecure` to `runserver` so it ser
 JavaScript locally. The pages follow the system's light or dark theme, work at phone width, and work
 without JavaScript; `app.js` only adds the live timer, double-submit protection and copy buttons.
 The Content-Security-Policy allows scripts and styles from our own static files only.
+
+For a real deployment rather than the local demo:
+- set `DJANGO_SECRET_KEY`, so sessions survive restarts and work across several workers;
+- set `DJANGO_HTTPS=1` for secure cookies, an HTTPS redirect and HSTS (`manage.py check --deploy` is then clean, apart from the subdomain and preload options that only the domain owner can choose);
+- put the login behind your SSO or a proxy that rate-limits it, because Django has no built-in login throttling.
 
 ## How a ticket flows
 

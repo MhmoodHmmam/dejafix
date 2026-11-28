@@ -28,6 +28,9 @@ README_RESULT_ROWS = {
     "Tickets a human had to handle, of 36": "Human touches",
 }
 NUMBER = re.compile(r"\d[\d,]*")
+SUBMISSION = ROOT / "docs" / "submission.md"
+MARKDOWN_IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+MAX_IMAGE_BYTES = 400_000
 
 MANAGE_COMMAND = re.compile(r"manage\.py\s+([a-z_]+)")
 MARKDOWN_LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -114,3 +117,21 @@ class DocsTests(SimpleTestCase):
                 quoted = NUMBER.findall(docs_cell)[:2] + NUMBER.findall(meko_cell)[:3]
                 expected = [NUMBER.findall(cell)[0] for cell in report[report_label]]
                 self.assertEqual(quoted, expected)
+
+    def test_readme_images_exist_have_alt_text_and_are_small(self):
+        images = [(alt, link) for alt, link in MARKDOWN_IMAGE.findall((ROOT / "README.md").read_text(encoding="utf-8"))
+                  if not link.startswith("https://")]  # the CI badge is GitHub's
+        self.assertGreaterEqual(len(images), 3)
+        for alt, link in images:
+            with self.subTest(image=link):
+                path = ROOT / link
+                self.assertTrue(path.is_file())
+                self.assertLessEqual(path.stat().st_size, MAX_IMAGE_BYTES)
+                self.assertGreater(len(alt.strip()), 10)
+
+    def test_submission_results_match_the_readme(self):
+        readme = table_rows((ROOT / "README.md").read_text(encoding="utf-8"))
+        submission = table_rows(SUBMISSION.read_text(encoding="utf-8"))
+        for label in README_RESULT_ROWS:
+            with self.subTest(row=label):
+                self.assertEqual(submission[label], readme[label])

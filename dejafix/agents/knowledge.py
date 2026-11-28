@@ -29,7 +29,7 @@ from dejafix.agents import prompts
 from dejafix.agents.schemas import GapArticle, clip
 from dejafix.agents.trace import AgentTrace
 from dejafix.llm import LLMUsage, StructuredLLM
-from dejafix.meko import MekoGateway, MekoToolError
+from dejafix.meko import MekoGateway, MekoToolError, MekoUnavailable
 
 LIBRARIAN_AGENT = "dejafix-librarian"
 ADD_CONTEXT_TODO = "add_context"
@@ -55,8 +55,11 @@ async def post_to_presigned_url(url: str, fields: Mapping[str, str], filename: s
     # The URL comes from Meko, but it receives our document: only ever send it over HTTPS.
     if urlsplit(url).scheme != "https":
         raise MekoToolError("knowledgebase_upload_document", "insecure_upload_url", "upload URL is not https")
-    async with httpx2.AsyncClient(timeout=UPLOAD_TIMEOUT_SECONDS) as client:
-        response = await client.post(url, data=dict(fields), files={"file": (filename, content, content_type)})
+    try:
+        async with httpx2.AsyncClient(timeout=UPLOAD_TIMEOUT_SECONDS) as client:
+            response = await client.post(url, data=dict(fields), files={"file": (filename, content, content_type)})
+    except httpx2.HTTPError as exc:
+        raise MekoUnavailable(f"document upload failed: {type(exc).__name__}") from exc
     return response.status_code
 
 

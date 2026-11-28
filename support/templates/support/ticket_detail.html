@@ -118,8 +118,14 @@
           <form class="approve" method="post" action="{% url 'support:resolution_approve' ticket.external_id %}" data-busy="">{% csrf_token %}
             <h3><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Approve</h3>
             <p>The curator agent stores the fix in Meko and promotes it to collective memory, so every resolver can reuse it.</p>
+            {% if resolution.reviewer_verdict == "escalate" %}
+            <p class="warn-note"><svg class="icon icon-s" aria-hidden="true"><use href="#i-alert"/></svg><span>The reviewer agent escalated this fix. Approving it puts it in shared memory for every agent, so write why you approve it.</span></p>
+            <label for="approve-note">Why you approve it</label>
+            <textarea id="approve-note" name="note" rows="2" maxlength="2000" required></textarea>
+            {% else %}
             <label for="approve-note">Optional note</label>
             <textarea id="approve-note" name="note" rows="2" maxlength="2000"></textarea>
+            {% endif %}
             <button type="submit" class="btn btn-primary" data-busy-text="Sharing with every agent…"><span data-label>Approve and share with every agent</span></button>
           </form>
           <form class="reject" method="post" action="{% url 'support:resolution_reject' ticket.external_id %}" data-busy="">{% csrf_token %}

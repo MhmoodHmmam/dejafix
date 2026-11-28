@@ -8,6 +8,7 @@ model. The pipeline only reads and traces; durable memory is written after a hum
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,7 +20,7 @@ from dejafix.agents.retrieval import Retrieval, retrieve
 from dejafix.agents.schemas import ProposedFix, ReuseCheck, ReviewVerdict, TriageResult, clip
 from dejafix.agents.trace import AgentTrace
 from dejafix.llm import LLMUsage, StructuredLLM
-from dejafix.meko import MekoCallRecord, MekoGateway, MekoToolError
+from dejafix.meko import MekoCallRecord, MekoError, MekoGateway, MekoToolError
 
 TRIAGE_AGENT = "dejafix-triage"
 RESOLVER_AGENTS = {"a": "dejafix-resolver-a", "b": "dejafix-resolver-b"}
@@ -34,6 +35,8 @@ MIN_SOLVE_CONFIDENCE = 0.5
 VERDICT_APPROVE = "approve_for_human"
 VERDICT_ESCALATE = "escalate"
 VERDICT_REUSED = "reused_approved_fix"
+
+logger = logging.getLogger("dejafix.agents")
 
 
 @dataclass(frozen=True)
@@ -375,8 +378,10 @@ async def curate_approved_fix(
     )
     memory_id = _first_memory_id(added)
     promoted = await curator.call("memory_promote", memory_ids=[memory_id])
-    inserted = promoted.get("inserted_ids", []) + promoted.get("updated_ids", []) if isinstance(promoted, dict) else []
-    await trace.record(
+    inserted = (promoted.get("inserted_ids") or []) + (promoted.get("updated_ids") or []) if isinstance(promoted, dict) else []
+    await _record_after_commit(
+        trace,
+        ticket_ref,
         "curate",
         input_text=text,
         output={"memory_id": memory_id, "promoted": memory_id in inserted, "case_file": case_file_hash},
@@ -384,6 +389,17 @@ async def curate_approved_fix(
         plan=["Store the case file as an artifact", "Store the approved fix as memory", "Promote it to the datapack's collective memory"],
     )
     return CurationResult(memory_id=memory_id, promoted=memory_id in inserted, case_file_hash=case_file_hash)
+
+
+async def _record_after_commit(trace: AgentTrace, ticket_ref: str, step: str, **turn: Any) -> None:
+    """The trace turn written after a memory is stored is best-effort.
+
+    By then the memory exists (and may be shared), so failing the whole decision would roll back the
+    local record of something Meko already has. A missing trace turn is the smaller loss."""
+    try:
+        await trace.record(step, **turn)
+    except MekoError as exc:
+        logger.warning("Ticket %s: the %s trace turn was not written (%s); the memory is stored.", ticket_ref, step, type(exc).__name__)
 
 
 async def record_human_correction(
@@ -408,7 +424,9 @@ async def record_human_correction(
         metadata=json.dumps({"app": "dejafix", "kind": "human_correction", "ticket": ticket_ref}),
     )
     memory_id = _first_memory_id(added)
-    await trace.record(
+    await _record_after_commit(
+        trace,
+        ticket_ref,
         "human_correction",
         input_text=text,
         output={"memory_id": memory_id, "case_file": case_file_hash},

@@ -12,6 +12,7 @@ overwritten. Then run `manage.py migrate`.
 from __future__ import annotations
 
 import ipaddress
+import re
 import secrets
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,9 @@ CLUSTER_ID_VAR = "DEJAFIX_AMP_CLUSTER_ID"
 PASSWORD_VAR = "DEJAFIX_DB_PASSWORD"
 CONNECTION_VARS = ("DEJAFIX_DB_HOST", "DEJAFIX_DB_PORT", "DEJAFIX_DB_USER", "DEJAFIX_DB_NAME")
 REDACTED = "<redacted>"
+# Every value written to .env: hostnames, ports, users, UUIDs and the urlsafe password. A value from
+# Meko with a line break could otherwise add its own line (and parse_dotenv keeps the last one).
+SAFE_ENV_VALUE = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 
 
 def allowed_cidr(raw: str) -> str:
@@ -183,6 +187,9 @@ class Command(BaseCommand):
         """Append only: existing lines (and any secrets in them) are left as they are."""
         if not values:
             return
+        unsafe = [key for key, value in values.items() if not SAFE_ENV_VALUE.match(str(value))]
+        if unsafe:
+            raise CommandError(f"Meko returned an unexpected value for {', '.join(unsafe)}; nothing was written to .env.")
         existing = self.env_path.read_text(encoding="utf-8-sig") if self.env_path.is_file() else ""
         lines = ["" if not existing or existing.endswith("\n") else "\n"]
         if header:

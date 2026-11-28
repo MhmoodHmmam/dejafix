@@ -457,3 +457,37 @@
   - [read] `docs/meko-tools.json`: `memory_search` is "hybrid search… semantic similarity with keyword matching" and is cross-agent (`agent_id` is only for traces). `context_search` has a per-source `limit`.
   - [source] `dejafix/agents/retrieval.py` and `prompts.py` before the change: `review_prompt` took no corrections.
   - [read] Live M2 searches in this session: the scores and ranks above.
+
+## R12: submission package and a final security review (week 12)
+- **Decision, README:** a "Tour in 60 seconds" with four screenshots of the running app: a reused ticket, the shared-memory page, a dark-mode trace, and the dashboard.
+  - They were captured from the live server at 2x and scaled to 1600 px. Palette PNGs are 128–172 KB each, with no visible banding.
+  - A docs test checks that every local image exists, has descriptive alt text and stays under 400 KB.
+- **Decision, `docs/submission.md`:** ready-to-paste text for the form, with Meko use mapped to each judging criterion and the honest limits.
+  - Its results table must equal the README's (a docs test), and the README's must equal the benchmark report (an existing test).
+  - It says DejaFix calls 22 Meko tools, counted from the "Tools we call" tables that a test checks against the code.
+- **Dependencies:** every pin is the latest patch of its line, except psycopg (3.3.9 exists). Its release notes list bug fixes only (Windows waiting, COPY memory, ranges), so 3.3.8 stays.
+- **Security review:** an independent reviewer was given only the code and the OWASP checklist. It reported 6 findings and 4 notes; each was checked in the code before acting:
+  1. A failed run overwrote a ticket that a concurrent run had resolved (and a person had approved), so approval history could be lost. Fixed with a conditional update (`status__in=[NEW, FAILED]`).
+  2. A network error during a document upload escaped as an `httpx2` error and left the gap stuck in PUBLISHING. It now becomes `MekoUnavailable`, so the claim is released.
+     - Related: a `null` in `memory_promote`'s reply crashed approval. It is now treated as empty.
+  3. If the closing trace write failed after `memory_promote` succeeded, the approval was rolled back while the fix stayed shared. Trace writes after a memory is stored are now best-effort, logged with the error type only.
+  4. The upload URL has no host allowlist (low). **Accepted:** we have no evidence of which storage host Meko uses, a wrong list would break publishing, and the URL comes from Meko over TLS with our API key. HTTPS is still required.
+  5. Meko values went into `.env` unvalidated, so a line break could inject `MEKO_MCP_URL=…`. Every value must now match `[A-Za-z0-9._-]{1,256}`, or nothing is written.
+  6. Publishing could send a draft older than one saved a moment before. The gap is now re-read after the claim.
+  - From the notes: approving a fix the reviewer agent escalated (a prompt-injection ticket, low confidence, a policy issue) now requires a written reason, enforced in the view (400) and in the service. The page warns and makes the note required. The other notes are documented in the README:
+    - per-process secret key with several workers;
+    - no login throttling;
+    - a reused reply is not reviewed (nothing sends replies).
+- **Decision, HTTPS settings:** `config/security.py`, opt-in with `DJANGO_HTTPS=1`, turns on secure cookies, the HTTPS redirect and HSTS (one hour by default, `DJANGO_HSTS_SECONDS` to raise it).
+  - With it on, `check --deploy` keeps only W005 and W021 (HSTS for subdomains, preload). Those are left to the domain owner because both are hard to undo.
+  - It stays off by default, because the demo runs over http://127.0.0.1, where secure-only cookies would block login.
+- **Tests:** +14:
+  - 9 for the hardening fixes, each failing before its fix;
+  - 3 for the HTTPS settings;
+  - 2 for the docs.
+  - The concurrent-run test injects the status change between the failed run and its write. A database change inside the agents' async code is refused by Django.
+- **Sources:**
+  - [read] PyPI JSON for each pinned package; [read] psycopg's release notes for 3.3.9.
+  - [read] `manage.py check --deploy` output (W004, W008, W012, W016; then W005, W021).
+  - [source] `django/utils/asyncio.py`: `SynchronousOnlyOperation` in async contexts.
+  - [knowledge] OWASP Top 10:2025, used as the review checklist.
