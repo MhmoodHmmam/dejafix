@@ -577,3 +577,49 @@
   - [source] `Requires-Python` in the installed metadata of Django, anthropic, mcp, anyio, httpx2, pydantic and psycopg.
   - [read] The local clean-clone run in this session (timings and HTTP results above).
   - [knowledge] GitHub Actions `strategy.matrix`, `GITHUB_ENV` and `::add-mask::`.
+
+## R16: retire a shared fix that turned out wrong or outdated (week 17)
+- **Why:** a reused fix skips human review, so a wrong or outdated one would spread silently. Shared memory needs a way to be corrected, not only grown.
+- **Probed live first** (a new throwaway datapack, `dejafix-w17-retire-…`, left in the account):
+  - A promoted fix comes back from `knowledgebase_search` with a `document_id` and `metadata_filters.memory_id`.
+  - `memory_update` and `memory_delete_by_id` on it answer `memory_is_promoted`: "Promoted memories are not yet mutable through MCP (GH #314)". Meko points to its Cloud UI's Learnings tab instead.
+  - `knowledgebase_delete_document` with the hit's `document_id` answers `NOT_FOUND`, and the fix keeps coming back.
+  - So the plan's fallback was used, and no new Meko tool was added (still 23).
+- **Decision, retirement:**
+  - `POST /memory/<memory_id>/retire/` (staff with the change-resolution permission, a reason required, keys required) calls `services.retire_fix`.
+  - A conditional UPDATE claims it, so a second retirement gets 409. On a Meko failure the claim is released and the page answers 502.
+  - In Meko (`pipeline.retire_shared_fix`), as `dejafix-human-review`: a case file (`dejafix-case-<ref>-retired.json`, with the retired memory ID and the tickets that reused it), the reason as a human correction (the existing format, so resolvers and the reviewer already read it), and a traced `retire_fix` turn.
+  - New fields on `Resolution` (`retired_at`, `retired_by`, `retirement_note`, `retirement_case_file_hash`). A check constraint allows retiring only an approved fix with a promoted memory.
+- **Decision, retrieval:** `retrieve()` and `run_pipeline()` take `retired_fix_ids`. The service passes the retired IDs on every run, and a skipped fix is listed in the retrieve step (`retired_fixes_skipped`). The benchmark passes none, because its datapacks are separate.
+- **Decision, pages:**
+  - The shared-memory page lists retired fixes apart, with the reason. The page still uses the same 6 queries.
+  - The corrections count includes retirement reasons.
+  - A ticket that reused a retired fix shows "Reused a retired fix: check this reply" with the reason.
+- **Live check** (real Claude and Meko, the throwaway datapack, a throwaway SQLite copy):
+  - T007 was approved, and T019 reused its fix (score 0.997).
+  - The fix was retired with a reason, answering 302 with a case file stored.
+  - T020 (same issue) then skipped the retired fix, read 1 learning, and its fix applied the reason (`corrections_applied` names the new export path). It used 6,429 tokens and went to human review.
+  - The pages were checked in light, dark and at phone width.
+- **Rejected:**
+  - Editing the fix in place: Meko refuses it for promoted memories, and a fix approved by a person shouldn't change under them.
+  - Re-running the affected tickets automatically: a closed reply was already sent to a customer, so a person decides.
+- **Limits:**
+  - The retired fix stays in Meko's knowledge base until Meko allows it to be deleted. Another app reading the same datapack would still see it.
+  - A run that already started before a retirement can still reuse the fix. That ticket then shows the retired-fix warning.
+- **Tests:** +11 (`support/tests/test_retire.py`), 285 in all:
+  - never offered again;
+  - the reason reaches the next resolver;
+  - the case file and trace;
+  - reused tickets flagged;
+  - the memory page and its query count;
+  - a reason required (empty, blank, too long);
+  - access and routing (405, 404, 403, login);
+  - 409 on a second retirement;
+  - 502 with nothing changed;
+  - 503 without keys;
+  - the database constraint.
+- **Sources:**
+  - [read] Meko's live replies in the throwaway datapack (`memory_is_promoted`, `NOT_FOUND`, the hit's fields).
+  - [read] `docs/meko-tools.json`: `memory_promote` ("one-way"), `memory_update`, `memory_delete_by_id`, `knowledgebase_delete_document`.
+  - [source] Django 5.2.19: `QuerySet.update` returns the number of rows matched; `CheckConstraint(condition=...)`.
+  - [knowledge] OWASP Top 10:2025, A01 (permission per action) and A06 (rules enforced on the server).

@@ -25,7 +25,7 @@ from dejafix.llm import ClaudeLLM, StructuredLLM
 from dejafix.meko import MekoError
 from support import dashboard, memory, progress, runner
 from support.benchmark import calibration_for, ground_truth, summaries_for
-from support.forms import ApproveForm, GapDraftForm, RejectForm, gap_filter, ticket_filter
+from support.forms import ApproveForm, GapDraftForm, RejectForm, RetireForm, gap_filter, ticket_filter
 from support.gaps import dismiss_gap, publish_gap
 from support.models import BenchmarkRun, KnowledgeGap, Resolution, Ticket
 from support.presenters import pipeline
@@ -35,6 +35,7 @@ from support.services import (
     ReviewError,
     approve_resolution,
     reject_resolution,
+    retire_fix,
 )
 
 PAGE_SIZE = 50
@@ -140,13 +141,13 @@ def _ticket_page(
     error: str = "",
     reject_form: RejectForm | None = None,
 ) -> HttpResponse:
-    resolution = Resolution.objects.filter(ticket=ticket).select_related("reviewed_by").first()
+    resolution = Resolution.objects.filter(ticket=ticket).select_related("reviewed_by", "retired_by").first()
     runs = list(ticket.runs.order_by("id"))
     reused_from = reused_by = None
     if resolution and resolution.reused_memory_id:
         reused_from = (
             Resolution.objects.filter(promoted_memory_id=resolution.reused_memory_id)
-            .select_related("ticket", "reviewed_by").first()
+            .select_related("ticket", "reviewed_by", "retired_by").first()
         )
     if resolution and resolution.promoted_memory_id:
         reused_by = list(
@@ -278,10 +279,50 @@ def resolution_reject(request: HttpRequest, ref: str) -> HttpResponse:
 # --- Shared memory ----------------------------------------------------------------------------
 
 
+def _memory_page(
+    request: HttpRequest, *, status: int = 200, error: str = "", retire_form: RetireForm | None = None,
+    failed_memory_id: str = "",
+) -> HttpResponse:
+    context = {
+        "memory": memory.overview(),
+        "can_retire": request.user.has_perm("support.change_resolution") and not missing_agent_keys(),
+        "retire_form": retire_form or RetireForm(),
+        "failed_memory_id": failed_memory_id,
+        "error": error,
+    }
+    return render(request, "support/memory.html", context, status=status)
+
+
 @require_GET
 @staff_required
 def memory_view(request: HttpRequest) -> HttpResponse:
-    return render(request, "support/memory.html", {"memory": memory.overview()})
+    return _memory_page(request)
+
+
+@require_POST
+@staff_required
+@permission_required("support.change_resolution", raise_exception=True)
+def memory_retire(request: HttpRequest, memory_id: str) -> HttpResponse:
+    resolution = get_object_or_404(
+        Resolution.objects.select_related("ticket").exclude(promoted_memory_id=""),
+        promoted_memory_id=memory_id,
+        review_status=Resolution.Review.APPROVED,
+    )
+    form = RetireForm(request.POST)
+    if not form.is_valid():  # CharField strips, so a blank reason is "required"
+        return _memory_page(request, status=BAD_REQUEST, retire_form=form, failed_memory_id=memory_id)
+    if missing := missing_agent_keys():
+        return _memory_page(request, status=SERVICE_UNAVAILABLE, error=no_keys_message(missing))
+    try:
+        retire_fix(resolution, user=request.user, note=form.cleaned_data["note"])
+    except ReviewError as exc:
+        return _memory_page(request, status=CONFLICT, error=str(exc))
+    except MekoError as exc:
+        return _memory_page(request, status=UPSTREAM_FAILURE, error=f"Meko failed, nothing was retired: {exc}")
+    messages.success(
+        request, f"The fix from {resolution.ticket.external_id} is retired: resolvers won't reuse it, and they read your reason."
+    )
+    return redirect("support:memory")
 
 
 # --- Knowledge gaps ---------------------------------------------------------------------------

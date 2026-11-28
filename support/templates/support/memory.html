@@ -9,6 +9,7 @@
     <p class="lead">Every fix a human approved, promoted to Meko's collective memory and reused by every agent. Every correction a human wrote, read by the next resolver before it solves anything.</p>
   </div>
 </header>
+{% if error %}<p class="error" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>{{ error }}</span></p>{% endif %}
 
 <section class="mem-stats" aria-label="Shared memory in numbers">
   <article class="kpi accent">
@@ -28,7 +29,7 @@
   </article>
   <article class="kpi">
     <h2><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Human corrections</h2>
-    <p class="value">{{ memory.corrections|length }}</p>
+    <p class="value">{{ memory.learning_count }}</p>
     <p class="note">learnings every resolver reads</p>
   </article>
 </section>
@@ -58,6 +59,19 @@
         <span>{{ fix.reuses|length }} reuse{{ fix.reuses|length|pluralize }}{% if fix.tokens_saved %} · {{ fix.tokens_saved|intcomma }} tokens saved{% endif %}</span>
         {% if fix.case_file_hash %}<span>Case file <code class="id" title="{{ fix.case_file_hash }}">{{ fix.case_file_hash|short_id }}</code></span>{% endif %}
       </div>
+      {% if can_retire %}
+      <details class="retire"{% if failed_memory_id == fix.memory_id %} open{% endif %}>
+        <summary>Retire this fix</summary>
+        <form method="post" action="{% url 'support:memory_retire' fix.memory_id %}" class="retire-form">
+          {% csrf_token %}
+          <p>{{ retire_form.note.help_text }}</p>
+          <label for="retire-note-{{ forloop.counter }}">Why is it wrong or outdated?</label>
+          <textarea name="note" id="retire-note-{{ forloop.counter }}" rows="3" maxlength="{{ retire_form.note.field.max_length }}" required>{% if failed_memory_id == fix.memory_id %}{{ retire_form.note.value|default:"" }}{% endif %}</textarea>
+          {% if failed_memory_id == fix.memory_id %}{% for message in retire_form.note.errors %}<p class="error"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><span>{{ message }}</span></p>{% endfor %}{% endif %}
+          <button type="submit" class="btn btn-danger" data-busy-text="Retiring the fix…"><span data-label>Retire from shared memory</span></button>
+        </form>
+      </details>
+      {% endif %}
     </article>
     {% endfor %}
   </div>
@@ -69,6 +83,30 @@
   </div>
   {% endif %}
 </section>
+
+{% if memory.retired %}
+<section aria-labelledby="retired-title">
+  <div class="section-title"><h2 id="retired-title">Retired fixes</h2><span class="muted">No resolver reuses these. Meko can't delete a promoted memory through MCP yet, so DejaFix skips them in every search.</span></div>
+  <div class="mem-grid">
+    {% for fix in memory.retired %}
+    <article class="mem-card retired">
+      <header>
+        <span class="badge status-awaiting_review"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Retired by {{ fix.retired_by }}{% if fix.retired_at %} · {{ fix.retired_at|date:"j M, H:i" }}{% endif %}</span>
+        <span><code class="id" title="{{ fix.memory_id }}">{{ fix.memory_id|short_id }}</code><button type="button" class="copy" data-copy="{{ fix.memory_id }}" aria-label="Copy memory ID"><svg class="icon icon-s" aria-hidden="true"><use href="#i-copy"/></svg></button></span>
+      </header>
+      <p class="signature">{{ fix.signature }}</p>
+      <blockquote class="quote">{{ fix.retirement_note }}</blockquote>
+      <p class="rejected">Retired fix: <s>{{ fix.summary }}</s></p>
+      <div class="mem-foot">
+        <span>From <a href="{% url 'support:ticket_detail' fix.ticket_ref %}"><code>{{ fix.ticket_ref }}</code></a>, approved by {{ fix.approved_by }}</span>
+        {% if fix.reuses %}<span>Reused before retirement by {% for reuse in fix.reuses %}<a href="{% url 'support:ticket_detail' reuse.ticket_ref %}"><code>{{ reuse.ticket_ref }}</code></a>{% if not forloop.last %}, {% endif %}{% endfor %}: check those replies</span>{% endif %}
+        {% if fix.retirement_case_file_hash %}<span>Case file <code class="id" title="{{ fix.retirement_case_file_hash }}">{{ fix.retirement_case_file_hash|short_id }}</code></span>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 <section aria-labelledby="corrections-title">
   <div class="section-title"><h2 id="corrections-title">Human corrections</h2><span class="muted">Stored in Meko by the human-review agent</span></div>
@@ -90,7 +128,7 @@
   <div class="card empty">
     <svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>
     <h2>No corrections yet</h2>
-    <p>Reject a fix with a note: the note becomes a learning the next resolver reads before solving.</p>
+    <p>Reject a fix with a note: the note becomes a learning the next resolver reads before solving.{% if memory.retired %} The reasons for the retired fixes above are learnings too.{% endif %}</p>
   </div>
   {% endif %}
 </section>

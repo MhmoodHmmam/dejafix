@@ -20,6 +20,15 @@ class RejectForm(forms.Form):
     )
 
 
+class RetireForm(forms.Form):
+    note = forms.CharField(
+        max_length=MAX_NOTE_LENGTH,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Why this fix is wrong or outdated. Resolvers stop reusing it and read your reason instead.",
+        error_messages={"required": "Retiring a fix needs a reason."},
+    )
+
+
 class GapDraftForm(forms.ModelForm):
     class Meta:
         model = KnowledgeGap

@@ -37,6 +37,7 @@ def build_case_file(
     fix: Mapping[str, Any],
     steps: Sequence[Mapping[str, Any]],
     human_note: str,
+    extra: Mapping[str, Any] | None = None,
 ) -> bytes:
     document = {
         "app": "dejafix",
@@ -48,6 +49,7 @@ def build_case_file(
         "human_note": human_note,
         "fix": dict(fix),
         "agent_steps": [{key: step.get(key) for key in CASE_FILE_STEP_FIELDS} for step in steps],
+        **(extra or {}),
     }
     return json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2, default=str).encode("utf-8")
 

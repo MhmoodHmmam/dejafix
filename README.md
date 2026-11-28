@@ -219,6 +219,10 @@ For a real deployment rather than the local demo:
 5. **Human** (the ticket page, or the Django admin):
    - Approve: the curator promotes the fix to collective memory.
    - Reject with a note: the note becomes a learning the next resolver reads.
+6. **Retire** (the shared-memory page): when an approved fix turns out wrong or outdated, a person
+   retires it with a reason. No resolver reuses it again, the reason becomes a learning, and the
+   tickets that already reused it are flagged for a second look. Meko can't delete a promoted
+   memory through MCP yet, so DejaFix keeps the retirement and skips the fix in every search.
 
 Every step is a Meko conversation turn with `reasoning`, `plan` and token usage (`track_token_usage`).
 Every human decision also stores a **case file** (the agents' steps, reasoning and scores, with no

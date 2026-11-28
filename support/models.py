@@ -86,11 +86,23 @@ class Resolution(models.Model):
     promoted_memory_id = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
     # SHA-256 of the case file (the decision record) stored as a Meko artifact when a human decides.
     case_file_hash = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
+    # A shared fix a human later found wrong or outdated. Meko can't delete a promoted memory
+    # through MCP yet, so retrieval skips every fix retired here (see services.retire_fix).
+    retired_at = models.DateTimeField(null=True, blank=True)
+    retired_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    retirement_note = models.TextField(max_length=MAX_NOTE_LENGTH, blank=True)
+    retirement_case_file_hash = models.CharField(max_length=MEKO_ID_LENGTH, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["id"]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(retired_at__isnull=True) | (Q(review_status="approved") & ~Q(promoted_memory_id="")),
+                name="resolution_retired_is_a_shared_fix",
+            ),
             models.CheckConstraint(
                 condition=~Q(source="reused") | ~Q(reused_memory_id=""),
                 name="resolution_reused_has_memory_id",

@@ -96,6 +96,16 @@
           <div class="chips"><span class="chip"><span class="chip-score">memory</span><code class="id" title="{{ resolution.reused_memory_id }}">{{ resolution.reused_memory_id|short_id }}</code></span><button type="button" class="copy" data-copy="{{ resolution.reused_memory_id }}" aria-label="Copy memory ID"><svg class="icon icon-s" aria-hidden="true"><use href="#i-copy"/></svg></button></div>
         </div>
       </section>
+      {% if reused_from.retired_at %}
+      <section class="callout callout-retired" aria-labelledby="retired-title" role="note">
+        <span class="callout-icon" aria-hidden="true"><svg class="icon icon-l"><use href="#i-note"/></svg></span>
+        <div>
+          <h2 id="retired-title">Reused a retired fix: check this reply</h2>
+          <p>After this ticket was closed, {{ reused_from.retired_by.get_username|default:"staff" }} retired the fix on {{ reused_from.retired_at|date:"j M, H:i" }}. Resolvers no longer reuse it. The reason:</p>
+          <blockquote class="quote">{{ reused_from.retirement_note }}</blockquote>
+        </div>
+      </section>
+      {% endif %}
       {% endif %}
 
       <section class="card" aria-labelledby="fix-title">
@@ -118,6 +128,7 @@
           <dt>Confidence</dt><dd class="num">{{ resolution.confidence|floatformat:2 }}</dd>
           <dt>Reviewer agent</dt><dd>{{ resolution.reviewer_verdict }}{% if resolution.reviewer_reason %}: {{ resolution.reviewer_reason }}{% endif %}</dd>
           {% if resolution.promoted_memory_id %}<dt>Promoted to shared memory</dt><dd><code class="id" title="{{ resolution.promoted_memory_id }}">{{ resolution.promoted_memory_id }}</code></dd>{% endif %}
+          {% if resolution.retired_at %}<dt>Retired from shared memory</dt><dd>{{ resolution.retired_at|date:"j M, H:i" }}{% if resolution.retired_by %} by {{ resolution.retired_by.get_username }}{% endif %}: “{{ resolution.retirement_note }}”</dd>{% endif %}
           {% if resolution.case_file_hash %}<dt>Case file (Meko artifact)</dt><dd><code class="id" title="{{ resolution.case_file_hash }}">{{ resolution.case_file_hash }}</code></dd>{% endif %}
           <dt>Human review</dt><dd>{{ resolution.get_review_status_display }}{% if resolution.reviewed_by %} by {{ resolution.reviewed_by.get_username }}{% endif %}{% if resolution.human_note %}: “{{ resolution.human_note }}”{% endif %}</dd>
         </dl>

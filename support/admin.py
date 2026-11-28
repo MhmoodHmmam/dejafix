@@ -45,7 +45,8 @@ class ResolutionAdmin(admin.ModelAdmin):
     readonly_fields = (
         "ticket", "resolver_agent", "source", "category", "problem_signature", "fix_summary", "fix_steps",
         "customer_reply", "confidence", "reused_memory_id", "reviewer_verdict", "reviewer_reason",
-        "review_status", "reviewed_by", "reviewed_at", "promoted_memory_id", "case_file_hash", "created_at",
+        "review_status", "reviewed_by", "reviewed_at", "promoted_memory_id", "case_file_hash", "retired_at", "retired_by",
+        "retirement_note", "retirement_case_file_hash", "created_at",
     )
 
     def has_add_permission(self, request: HttpRequest) -> bool:

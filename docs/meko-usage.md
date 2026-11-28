@@ -95,6 +95,13 @@ queries (it used 11) and loads in about 1 second. The first load after 5 minutes
   is reused only if `dejafix-curator` wrote it in the fixed format, and a correction is used only if
   `dejafix-human-review` wrote it. Meko also auto-extracts memories from conversation turns; those
   never count as approved fixes.
+- **A shared fix can be retired.** A person who finds an approved fix wrong or outdated retires it
+  with a reason on the shared-memory page. The reason is stored like a rejection note
+  (`memory_add` by `dejafix-human-review`, with a case file), so the next resolver reads why the
+  old fix no longer holds. Meko can't remove the fix itself yet: probed live in a throwaway
+  datapack, `memory_update` and `memory_delete_by_id` answer `memory_is_promoted` for a promoted
+  memory ("not yet mutable through MCP", GH #314), and `knowledgebase_delete_document` doesn't find
+  it. So DejaFix records the retirement and `retrieve()` skips that memory ID in every search.
 - **Two resolvers, one memory.** In the benchmark, `dejafix-resolver-a` and `dejafix-resolver-b`
   take turns. In 7 of the 17 reuses, the fix had been approved on a ticket the other resolver solved.
 

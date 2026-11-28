@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -118,6 +118,7 @@ async def run_pipeline(
     trusted_reviewer: str = HUMAN_REVIEW_AGENT,
     use_memory: bool = True,
     on_step: Callable[[StepRecord], None] | None = None,
+    retired_fix_ids: Collection[str] = frozenset(),
 ) -> PipelineOutcome:
     if resolver not in RESOLVER_AGENTS:
         raise ValueError(f"resolver must be one of {sorted(RESOLVER_AGENTS)}")
@@ -155,6 +156,7 @@ async def run_pipeline(
         trusted_curator=trusted_curator,
         trusted_reviewer=trusted_reviewer,
         use_memory=use_memory,
+        retired_fix_ids=retired_fix_ids,
     )
     retrieve_reason = _retrieval_reason(retrieval)
     await resolver_trace.record(
@@ -323,6 +325,8 @@ def _retrieval_reason(retrieval: Retrieval) -> str:
     best = retrieval.best_fix
     if best:
         return f"Found approved fix {best.memory_id} (score {best.score:.2f}); checking whether it applies."
+    if retrieval.retired_skipped and not retrieval.approved_fixes:
+        return "The approved fix for this problem was retired by a human; solving from documentation and their correction."
     if retrieval.approved_fixes:
         return "Approved fixes found but none close enough to reuse; solving from documentation."
     return "No approved fix for this problem yet; solving from documentation."
@@ -358,10 +362,11 @@ class CorrectionResult:
     case_file_hash: str = ""
 
 
-async def _store_case_file(meko: MekoGateway, ticket_ref: str, case_file: bytes | None) -> str:
+async def _store_case_file(meko: MekoGateway, ticket_ref: str, case_file: bytes | None, *, suffix: str = "") -> str:
     if not case_file:
         return ""
-    return await put_artifact(meko, filename=case_file_name(ticket_ref), content=case_file, content_type=JSON_CONTENT_TYPE)
+    name = case_file_name(f"{ticket_ref}-{suffix}" if suffix else ticket_ref)
+    return await put_artifact(meko, filename=name, content=case_file, content_type=JSON_CONTENT_TYPE)
 
 
 async def curate_approved_fix(
@@ -447,6 +452,52 @@ async def record_human_correction(
         reasoning="A human rejected the proposed fix; the note is kept so resolvers avoid the same mistake.",
     )
     return CorrectionResult(memory_id=memory_id, case_file_hash=case_file_hash)
+
+
+async def retire_shared_fix(
+    meko: MekoGateway,
+    *,
+    ticket_ref: str,
+    memory_id: str,
+    signature: str,
+    retired_summary: str,
+    note: str,
+    case_file: bytes | None = None,
+    reviewer_agent: str = HUMAN_REVIEW_AGENT,
+) -> CorrectionResult:
+    """A human retires a shared fix that turned out wrong or outdated.
+
+    Meko can't delete or update a promoted memory through MCP yet (it answers
+    `memory_is_promoted`, GH #314), so the fix stays in the knowledge base and the caller skips it
+    in every retrieval. The reason is stored like a rejection note, so the next resolver with the
+    same problem reads why the old fix no longer holds."""
+    trace = AgentTrace(meko, agent=reviewer_agent, ticket_ref=ticket_ref)
+    reviewer = await trace.open()
+    case_file_hash = await _store_case_file(reviewer, ticket_ref, case_file, suffix="retired")
+    text = format_correction_memory(signature=signature, rejected_summary=retired_summary, note=note, case_file=case_file_hash)
+    added = await reviewer.call(
+        "memory_add",
+        text=text,
+        run_id=f"dejafix:{ticket_ref}",
+        metadata=json.dumps(
+            {"app": "dejafix", "kind": "retired_fix", "ticket": ticket_ref, "retired_memory_id": memory_id}
+        ),
+    )
+    correction_id = _first_memory_id(added)
+    await _record_after_commit(
+        trace,
+        ticket_ref,
+        "retire_fix",
+        input_text=text,
+        output={"retired_memory_id": memory_id, "memory_id": correction_id, "case_file": case_file_hash},
+        reasoning=(
+            "A human retired this shared fix as wrong or outdated. Resolvers skip it from now on, "
+            "and the reason is a correction they read before solving."
+        ),
+        plan=["Store the retirement case file as an artifact", "Store the reason as a human correction",
+              "Skip the retired fix in every later retrieval"],
+    )
+    return CorrectionResult(memory_id=correction_id, case_file_hash=case_file_hash)
 
 
 def _first_memory_id(reply: Any) -> str:

@@ -9,12 +9,13 @@ Three calls, because they cover different things (verified against Meko Cloud, s
   do not come back from `context_search`.
 
 A promoted fix is trusted only if our curator agent wrote it: anything else in the datapack
-(another tool, a test, a poisoning attempt) is ignored as a fix.
+(another tool, a test, a poisoning attempt) is ignored as a fix. A fix a human retired is skipped:
+Meko can't delete a promoted memory through MCP yet, so the caller passes the retired IDs.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,6 +57,7 @@ class Retrieval:
     learnings: list[str] = field(default_factory=list)
     match_quality: str = "unknown"
     tokens_saved: int = 0
+    retired_skipped: list[str] = field(default_factory=list)
 
     @property
     def best_fix(self) -> ApprovedFix | None:
@@ -64,6 +66,7 @@ class Retrieval:
 
     def summary(self) -> dict[str, Any]:
         best = self.best_fix
+        retired = {"retired_fixes_skipped": self.retired_skipped} if self.retired_skipped else {}
         return {
             "approved_fixes": [{"memory_id": fix.memory_id, "score": round(fix.score, 3)} for fix in self.approved_fixes],
             "reuse_candidate": best.memory_id if best else None,
@@ -71,6 +74,7 @@ class Retrieval:
             "learnings": len(self.learnings),
             "match_quality": self.match_quality,
             "tokens_saved": self.tokens_saved,
+            **retired,
         }
 
 
@@ -99,6 +103,7 @@ async def retrieve(
     trusted_curator: str,
     trusted_reviewer: str,
     use_memory: bool = True,
+    retired_fix_ids: Collection[str] = frozenset(),
 ) -> Retrieval:
     """Search Meko before solving. `meko` must be scoped to the resolver's conversation.
 
@@ -145,7 +150,10 @@ async def retrieve(
         if filters.get("source") == PROMOTED_SOURCE:
             if use_memory and filters.get("agent_id") == trusted_curator and parse_fix_memory(text) is not None:
                 memory_id = str(filters.get("memory_id") or hit.get("id") or "")
-                if memory_id:
+                if memory_id in retired_fix_ids:
+                    if memory_id not in retrieval.retired_skipped:
+                        retrieval.retired_skipped.append(memory_id)
+                elif memory_id:
                     retrieval.approved_fixes.append(ApprovedFix(memory_id, text, _score(hit, "rerank_score")))
         elif text and text not in retrieval.passages:
             retrieval.passages.append(text)

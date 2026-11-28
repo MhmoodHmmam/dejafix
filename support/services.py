@@ -24,6 +24,7 @@ from dejafix.agents.pipeline import (
     TicketInput,
     curate_approved_fix,
     record_human_correction,
+    retire_shared_fix,
     run_pipeline,
 )
 from dejafix.llm import LLMError, StructuredLLM
@@ -106,6 +107,7 @@ def resolve_ticket(
         return ResolveResult(ticket=ticket, ran=False)
 
     calls: list[MekoCallRecord] = []
+    retired = retired_fix_ids()
 
     async def run() -> PipelineOutcome:
         async with _factory(session_factory)(calls) as meko:
@@ -117,6 +119,7 @@ def resolve_ticket(
                 trusted_curator=settings.DEJAFIX_CURATOR_AGENT,
                 calls=calls,
                 on_step=_report_step(ticket.pk),
+                retired_fix_ids=retired,
             )
 
     try:
@@ -294,7 +297,71 @@ def reject_resolution(
     return resolution
 
 
-def _case_file(resolution: Resolution, *, decision: str, note: str) -> bytes:
+def retired_fix_ids() -> frozenset[str]:
+    """Meko memory IDs of the shared fixes a human retired; retrieval never offers them."""
+    return frozenset(
+        Resolution.objects.filter(retired_at__isnull=False).values_list("promoted_memory_id", flat=True)
+    )
+
+
+def retire_fix(
+    resolution: Resolution,
+    *,
+    user: AbstractBaseUser,
+    note: str,
+    session_factory: SessionFactory | None = None,
+) -> Resolution:
+    """A human retires a shared fix that turned out wrong or outdated, saying why.
+
+    From then on no resolver reuses it, and the reason is a human correction in Meko that the next
+    resolver with the same problem reads. Tickets that already reused it are flagged on their page."""
+    note = note.strip()[:MAX_NOTE_LENGTH]
+    if not note:
+        raise ReviewError("Retiring a fix needs a reason.")
+    if resolution.review_status != Resolution.Review.APPROVED or not resolution.promoted_memory_id:
+        raise ReviewError("Only a fix in shared memory can be retired.")
+    # Claimed with a conditional UPDATE, so two people can't both retire it.
+    claimed = Resolution.objects.filter(pk=resolution.pk, retired_at__isnull=True).update(
+        retired_at=timezone.now(), retired_by=user, retirement_note=note
+    )
+    if not claimed:
+        raise ReviewError("This fix was already retired.")
+
+    memory_id = resolution.promoted_memory_id
+    reused_by = list(
+        Resolution.objects.filter(reused_memory_id=memory_id).order_by("id").values_list("ticket__external_id", flat=True)
+    )
+    case_file = _case_file(
+        resolution, decision="retired", note=note, extra={"retired_memory_id": memory_id, "reused_by": reused_by}
+    )
+    calls: list[MekoCallRecord] = []
+
+    async def retire():
+        async with _factory(session_factory)(calls) as meko:
+            return await retire_shared_fix(
+                meko,
+                ticket_ref=resolution.ticket.external_id,
+                memory_id=memory_id,
+                signature=resolution.problem_signature,
+                retired_summary=resolution.fix_summary,
+                note=note,
+                case_file=case_file,
+            )
+
+    try:
+        result = async_to_sync(retire)()
+    except MekoError:
+        # Release the claim: the fix stays shared and can be retired once Meko is back.
+        Resolution.objects.filter(pk=resolution.pk).update(retired_at=None, retired_by=None, retirement_note="")
+        raise
+
+    Resolution.objects.filter(pk=resolution.pk).update(retirement_case_file_hash=result.case_file_hash)
+    logger.info("Shared fix from ticket %s retired by user %s.", resolution.ticket.external_id, user.pk)
+    resolution.refresh_from_db()
+    return resolution
+
+
+def _case_file(resolution: Resolution, *, decision: str, note: str, extra: dict | None = None) -> bytes:
     """The decision record for Meko's artifact store: agent steps and the fix, no ticket text."""
     steps = AgentRun.objects.filter(ticket_id=resolution.ticket_id).order_by("id").values(*CASE_FILE_STEP_FIELDS)
     return build_case_file(
@@ -313,4 +380,5 @@ def _case_file(resolution: Resolution, *, decision: str, note: str) -> bytes:
         },
         steps=list(steps),
         human_note=note,
+        extra=extra,
     )
